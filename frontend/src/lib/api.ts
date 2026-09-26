@@ -135,13 +135,23 @@ export const notificationsApi = {
 // Government
 export const governmentApi = {
   workQueue: (filters?: { department_id?: string; status?: string; priority?: string; district?: string }) => {
-    const params = new URLSearchParams(filters as Record<string, string>).toString();
-    return api.get<WorkQueueItem[]>(`/government/work-queue${params ? `?${params}` : ''}`);
+    const params = new URLSearchParams();
+    if (filters) {
+      for (const [k, v] of Object.entries(filters)) {
+        if (v && v !== 'undefined' && v !== 'null') {
+          params.append(k, v);
+        }
+      }
+    }
+    const query = params.toString();
+    return api.get<WorkQueueItem[]>(`/government/work-queue${query ? `?${query}` : ''}`);
   },
   bottlenecks: () => api.get<unknown>('/government/bottlenecks'),
   analytics: () => api.get<AnalyticsSummary>('/government/analytics'),
-  slaMonitor: (department_id?: string) =>
-    api.get<unknown[]>(`/government/sla-monitor${department_id ? `?department_id=${department_id}` : ''}`),
+  slaMonitor: (department_id?: string) => {
+    const valid = department_id && department_id !== 'undefined' && department_id !== 'null';
+    return api.get<unknown[]>(`/government/sla-monitor${valid ? `?department_id=${department_id}` : ''}`);
+  },
 };
 
 // Admin

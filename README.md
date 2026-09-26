@@ -1,86 +1,79 @@
 # Industrial Approval & Compliance Intelligence Platform
-SIH 2026 · Problem Statement 26130 · Govt. of Maharashtra
+SIH 2026 — Problem Statement 26130 — Govt. of Maharashtra
 
-Pre-built scaffold for the project described in `IMPLEMENTATION_PLAN.md` and
-`DEVELOPER_GUIDE.md` — **keep both of those files in this root** alongside
-this one; the agent/dev reads them for scope, data model and the API
-contract. This scaffold implements **Phase 0** from the plan: repo layout,
-the full Prisma schema, the frozen API contract as working route + service
-files, auth boilerplate, and the rule-engine evaluator. Everything else (the
-P0 feature list, seed data, UI screens) is Phase 1+ work for the agent.
+Full-stack production platform for industrial regulatory intelligence, approval dependency graphing, dynamic readiness evaluation, SLA monitoring, and incentive matching.
 
-## Structure
+## Tech Stack
 ```
-/backend    Express + TypeScript + Prisma API (port 4000)
-/frontend   Next.js 14 + TypeScript + Tailwind + shadcn/ui (port 3000)
+/backend    Express + TypeScript + @supabase/supabase-js + @supabase/server (port 4000)
+/frontend   Next.js 14 (App Router) + TypeScript + Tailwind CSS + shadcn/ui (port 3000)
+/database   Supabase PostgreSQL (connected via HTTPS REST API using service secret key)
 ```
-See `DEVELOPER_GUIDE.md` §3 for the full folder-by-folder breakdown.
 
-## Quick start
+## Quick Start
+
+### Unified Workspace (Recommended)
+Run both backend and frontend concurrently from the root directory:
 ```bash
-# 1. Postgres — either run the bundled docker-compose or point DATABASE_URL
-#    at any Postgres 14+ instance (see docker-compose.yml, optional)
-docker compose up -d
-
-# 2. Backend
-cp backend/.env.example backend/.env      # adjust DATABASE_URL / JWT_SECRET if needed
-cd backend
 npm install
-npx prisma migrate dev --name init
-npm run seed
-npm run dev            # http://localhost:4000
+npm run dev              # Starts backend on :4000 & frontend on :3000
 
-# 3. Frontend (new terminal)
-cp frontend/.env.example frontend/.env
+# Run complete test suite:
+npm test                 # Run all 32 unit & integration tests
+npm run test:unit        # Run unit tests only
+npm run test:integration # Run integration tests only
+```
+
+### Manual Separate Setup
+
+#### 1. Backend Setup
+```bash
+cd backend
+cp .env.example .env
+
+# Configure backend/.env with your Supabase credentials:
+# SUPABASE_URL=https://<your-project-ref>.supabase.co
+# SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
+# SUPABASE_SECRET_KEY=sb_secret_...
+# SUPABASE_JWKS_URL=https://<your-project-ref>.supabase.co/auth/v1/.well-known/jwks.json
+# JWT_SECRET=your-jwt-secret
+
+npm install
+
+# Initialize schema (execute backend/supabase_schema.sql in Supabase SQL Editor if fresh)
+# Seed all demo accounts, projects, rules, and mock applications:
+npm run seed
+
+# Start API server
+npm run dev            # http://localhost:4000
+```
+
+#### 2. Frontend Setup
+```bash
 cd frontend
+cp .env.local.example .env.local
+# NEXT_PUBLIC_API_URL=http://localhost:4000/api
+
 npm install
 npm run dev            # http://localhost:3000
 ```
 
-## Demo accounts
-Password `Demo@123` for all (bcrypt-hashed in `backend/prisma/seed.ts`):
-`entrepreneur@demo.local`, `manager@demo.local`, `officer@demo.local`,
-`nodal@demo.local`, `inspector@demo.local`, `admin@demo.local`
+## Demo Accounts
+Password `Demo@123` for all (bcrypt-hashed in seed):
+| Email | Role | Portal Landing |
+|---|---|---|
+| `entrepreneur@demo.local` | ENTREPRENEUR | `/app/dashboard` |
+| `manager@demo.local` | MANAGER | `/app/dashboard` |
+| `officer@demo.local` | OFFICER (MIDC) | `/government/work-queue` |
+| `pcb.officer@demo.local` | OFFICER (MPCB) | `/government/work-queue` |
+| `nodal@demo.local` | NODAL | `/government/work-queue` |
+| `inspector@demo.local` | INSPECTOR | `/government/work-queue` |
+| `admin@demo.local` | ADMIN | `/admin/approval-types` |
 
-## What's already wired
-- Full Prisma schema (`backend/prisma/schema.prisma`) matching plan §5, with
-  the compound-unique keys needed for idempotent upserts
-- Express app with CORS, JSON body parsing, JWT auth middleware, role guard,
-  centralized error handler
-- **Every route from the frozen API contract (plan §7) is registered** and
-  calls into a matching service function — nothing is missing, nothing
-  guessed at a different path
-- `authService` fully implemented (login, get current user)
-- `regulatoryService.runRegulatoryAnalysis` fully implemented: loads the
-  project profile, runs the rule engine against `ApplicabilityRule` rows,
-  upserts `ProjectApproval` rows, resolves required documents +
-  dependencies, and reuses the *same* evaluator against
-  `IncentiveScheme.eligibility_rules` for incentive matching (plan §13 + §23)
-- Rule-engine condition evaluator (`rule-engine/evaluate.ts`) implemented per
-  DEVELOPER_GUIDE §5 — a dumb, predictable `{field, operator, value}`
-  AND-group matcher. Do not add a scripting language to it; put complexity
-  in the seeded rule data instead
-- `MockGovernmentAdapter` / `GovernmentIntegrationAdapter` interface,
-  `LocalStorageAdapter` for documents (swap either later, plan §16, §29, §37)
-- Generic admin CRUD helper wired for approval-types/rules/dependencies/
-  sla-policies/incentive-schemes, all behind `requireRole('ADMIN')`, all
-  audit-logged
-- Frontend shell: Tailwind config carrying the exact design tokens from plan
-  §8 (dark sidebar, mint/lavender accent, status badges, `rounded-2xl`
-  cards, no gradients), API client, auth context, shared TS types
-
-## What's still TODO (the actual hackathon build)
-Every function marked `TODO:` in `backend/src/services/*.ts` — this is the
-P0 feature list in `IMPLEMENTATION_PLAN.md` §44: Project Control Centre
-aggregation, approval detail view, dependency graph + "can start now",
-readiness pre-validation, SLA computation, bottleneck analytics. Plus **all**
-frontend pages/components (only the root layout + `lib/` exist so far) and
-the seed data for the ABC Foods demo journey (plan §42-43) — `seed.ts` only
-creates the org/department/demo-user rows, clearly marked where the rest
-goes.
-
-Hand this repo + `AGENT_INITIAL_PROMPT.md` to your coding agent to continue
-from here. Nothing in this scaffold has been `npm install`'d or compiled —
-it was generated without network access, so treat the first build as the
-agent's first checkpoint (plan §48: "after each major stage, run/build/test,
-fix errors").
+## Key Capabilities Implemented
+- **Project Control Centre:** Aggregated readiness metrics, SLA alerts, open queries, pending inspections, and bottleneck analysis derived from real DB rows.
+- **Rule Engine & Regulatory Analyzer:** Declarative condition evaluation (`{field, operator, value}`) determining applicable approvals, mandatory documents, and incentive matches.
+- **Approval Dependency Graph:** Topological prerequisite mapping with "can start now" resolution and interactive React Flow visualization.
+- **Document Vault & Multi-Use Tracker:** Central repository tracking verification statuses, document reuse counts across applications, and upcoming expiries.
+- **Government Workflow & SLA Monitoring:** Officer work queue, status update workflows, SLA breach tracking, and bottleneck analytics.
+- **Admin Configuration Portal:** Dynamic CRUD management for approval types, applicability rules, dependencies, SLA policies, and incentive schemes.

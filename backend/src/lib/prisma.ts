@@ -1,14 +1,9 @@
-import { PrismaClient } from '@prisma/client';
+/**
+ * Database client bridge - fully powered by @supabase/supabase-js with SUPABASE_SECRET_KEY.
+ * Preserves the db interface for services while completely eliminating Prisma.
+ */
+import { db } from './supabaseDb';
 
-declare global {
-  // eslint-disable-next-line no-var
-  var __prisma: PrismaClient | undefined;
-}
-
-// Reuse a single client across tsx watch reloads in dev to avoid exhausting
-// the Postgres connection pool.
-export const prisma = global.__prisma ?? new PrismaClient();
-
-if (process.env.NODE_ENV !== 'production') {
-  global.__prisma = prisma;
-}
+export const prisma = db;
+export { db };
+export default db;

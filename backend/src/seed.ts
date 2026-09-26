@@ -11,8 +11,8 @@
  * Fixed UUIDs are used throughout so upserts work correctly.
  */
 
+import { db as prisma } from './lib/supabaseDb';
 import {
-  PrismaClient,
   Role,
   ProjectApprovalStatus,
   ApplicationStatus,
@@ -26,10 +26,8 @@ import {
   ApplicationDocValidationStatus,
   FindingSeverity,
   DependencyType,
-} from '@prisma/client';
+} from './types/database';
 import bcrypt from 'bcrypt';
-
-const prisma = new PrismaClient();
 
 const DEMO_PASSWORD = process.env.DEMO_PASSWORD ?? 'Demo@123';
 

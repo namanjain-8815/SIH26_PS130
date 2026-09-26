@@ -1,6 +1,11 @@
 # Implementation Plan — Industrial Approval & Compliance Intelligence Platform
 SIH 2026 · Problem Statement 26130 · Govt. of Maharashtra
 
+## Build status
+Phases 0–2 are **built and running**. Do not re-implement, re-scope, or edit
+their content in §6 below — that text is kept as a historical record of what
+was built, not a to-do list. Continue the build from **Phase 3** onward.
+
 ## 1. Product in one line
 Turn a project's business profile into a personalized, dependency-aware approval
 roadmap; guide document prep, pre-validate submissions, track applications,
@@ -11,9 +16,10 @@ project-centric workspace, for both applicants and government officers.
 One seeded demo project: **ABC Foods Pvt Ltd**, food processing, Pune (MIDC),
 ₹25 Cr investment, 80 employees, Maharashtra jurisdiction.
 
-Roles with real dashboards: **Entrepreneur, Government Officer, Admin.**
-(Manager/Nodal/Inspector get login stubs + demo accounts but reuse
-Officer/Admin views — do not build 6 separate UIs.)
+Roles with real dashboards: **Entrepreneur, Government Officer, PCB Officer,
+Admin.** PCB Officer reuses the Government portal shell with department-aware
+data and permissions. Manager/Nodal/Inspector may reuse shared views; do not
+build six separate UIs.
 
 P0 checklist (nothing else):
 - [ ] JWT auth + role-based routing
@@ -45,15 +51,15 @@ blockchain/microservices/k8s.
 - **Frontend:** Next.js 14 (App Router) + TypeScript + Tailwind CSS + shadcn/ui
   + React Flow (dependency graph) + Recharts (charts) + React Hook Form + Zod
   + TanStack Query (server state)
-- **Backend:** Node.js + Express + TypeScript + Prisma ORM
-- **Database:** PostgreSQL
+- **Backend:** Node.js + Express + TypeScript + @supabase/supabase-js + @supabase/server
+- **Database:** Supabase PostgreSQL
 - **Auth:** JWT + bcrypt, custom Express middleware (no external auth provider needed)
-- **Storage:** local disk behind a `StorageAdapter` interface (swap for S3/Supabase later)
+- **Storage:** local disk behind a `StorageAdapter` interface (swap for S3/Supabase Storage later)
 - **Repo:** one monorepo, `/frontend` and `/backend`, this file is the shared contract
 
 ## 4. Architecture
 ```
-Next.js (:3000)  --REST-->  Express API (:4000)  -->  Prisma  -->  PostgreSQL
+Next.js (:3000)  --REST-->  Express API (:4000)  -->  Supabase Client  -->  PostgreSQL
 ```
 No business logic in React components. No business logic in Express route
 handlers — routes call services only.
@@ -74,82 +80,122 @@ Dropped from the full spec for MVP: `Establishment` (fold address into
 `Project`), `RegulationVersion` (use `effective_from/to` on the rule row
 instead), `Grievance`, `Escalation`.
 
-| Entity | Key fields | Relations |
-|---|---|---|
-| User | id, name, email, password_hash, role, org_id? | Organization, Department |
-| Organization | id, legal_name, entity_type, sector | Users, Projects |
-| Department | id, name, state, district | Applications, Officers |
-| Project | id, org_id, name, sector, investment_amount, employee_count, stage, district, industrial_area, target_start_date | Organization, ProjectAttribute[], ProjectApproval[] |
-| ProjectAttribute | id, project_id, key, value | Project |
-| ApprovalType | id, name, authority, category, description, purpose, default_sla_days, renewal_period_days, requires_inspection, source_reference | ApplicabilityRule[], DocumentRequirement[] |
-| ApplicabilityRule | id, approval_type_id, conditions(json), jurisdiction, sector, effective_from, effective_to, active | ApprovalType |
-| ApprovalDependency | id, prerequisite_approval_type_id, dependent_approval_type_id, dependency_type | ApprovalType ×2 |
-| ProjectApproval | id, project_id, approval_type_id, applicability_reason, status, priority, due_date, actual_completion_date, blocked_reason | Project, ApprovalType, Application |
-| DocumentRequirement | id, approval_type_id, document_type, mandatory, condition | ApprovalType |
-| Document | id, org_id, project_id, document_type, file_name, file_url, version, verification_status, issued_date, expiry_date | Project |
-| Application | id, project_approval_id, department_id, application_number, status, submitted_at, due_date, completed_at | ProjectApproval, Department |
-| ApplicationDocument | id, application_id, document_id, validation_status, validation_notes | Application, Document |
-| ApplicationEvent | id, application_id, actor_id, event_type, timestamp, notes | Application, User |
-| Query | id, application_id, created_by, assigned_to, subject, description, priority, deadline, status | Application |
-| QueryResponse | id, query_id, created_by, response_text, created_at | Query |
-| Inspection | id, application_id, department_id, inspector_id, scheduled_date, status, location, purpose | Application |
-| InspectionFinding | id, inspection_id, severity, description, corrective_action, status | Inspection |
-| SLAPolicy | id, approval_type_id, duration_days, start_event, escalation_level | ApprovalType |
-| SLAInstance | id, application_id, due_date, status, breached, breach_duration | Application |
-| IncentiveScheme | id, name, authority, description, eligibility_rules(json), benefit_description, deadline | IncentiveMatch[] |
-| IncentiveMatch | id, project_id, incentive_scheme_id, matching_reasons, status | Project, IncentiveScheme |
-| ComplianceRequirement | id, project_id, name, authority, frequency, next_due_date, status, linked_approval_id | Project |
-| AuditLog | id, actor_id, action, entity_type, entity_id, timestamp, before_data, after_data | User |
-| Notification | id, user_id, title, message, type, read, created_at | User |
+### 5A. Database evolution policy
+The schema in §5 is the **initial MVP schema**, not a guarantee that it will
+never change. Upcoming phases may add columns, tables, indexes, views, or
+policies when a feature genuinely requires them.
 
-## 6. Two-developer parallel plan
-Split strictly on the frontend/backend boundary so both devs can work at the
-same time with almost zero merge conflicts. The only shared surface is the
-API contract in §7 — **freeze it in Phase 0** and don't change it silently.
+- Do not manually redesign the schema in the Supabase dashboard as the normal
+  development workflow.
+- Before any schema change, inspect and reuse existing tables and relations.
+- Apply genuine changes through versioned SQL migrations such as
+  `supabase/migrations/*.sql`.
+- Update the backend service/query layer in the same milestone as each schema
+  migration.
+- The frontend must use the backend API and must not connect directly to
+  Supabase.
+- Keep database structure and migrations in the repository as the source of
+  truth.
 
-**Phase 0 (both, ~1–2 hrs, together):** init monorepo, write `schema.prisma`
-from §5, migrate empty DB, freeze §7, agree on `.env.example` and demo
-account passwords.
+## 6. Implementation sequence
 
-**Phase 1 (parallel — the bulk of the work):**
+Build the product incrementally from the current repository state. Keep the
+API contract, database schema, service boundaries, and UI patterns consistent
+across all phases. Complete and verify each phase before moving to the next.
 
-*Dev A — Backend, build in this order:*
-1. `backend/prisma/schema.prisma`, run migration
-2. `backend/prisma/seed.ts` + `rule-engine/rules/*.json` (seed data per §9 of DEVELOPER_GUIDE)
-3. `middleware/auth.ts`, `roleGuard.ts`
-4. `services/authService.ts` + `routes/auth.ts`
-5. `rule-engine/evaluate.ts` (`evaluateProjectAgainstRules`)
-6. `services/regulatoryService.ts`, `projectService.ts` + `routes/projects.ts`
-7. `services/approvalService.ts`, `dependencyService.ts` + routes
-8. `services/documentService.ts` + routes
-9. `services/applicationService.ts`, `queryService.ts`, `inspectionService.ts`, `slaService.ts` + routes
-10. `services/incentiveService.ts`, `complianceService.ts` + routes
-11. `services/analyticsService.ts` + government routes (work-queue, bottlenecks)
-12. `routes/admin.ts` (CRUD wrapping the same services)
-13. `services/auditService.ts` + wire audit middleware everywhere
-14. `services/notificationService.ts` + routes
+### Phase 0 — Foundation — ✅ COMPLETE (built & running — do not modify)
+- Confirm the monorepo structure and environment variables.
+- Define/apply the initial Supabase database schema.
+- Seed the ABC Foods demo data and regulatory rule data.
+- Verify API boot, database access, and the initial API contract.
 
-*Dev B — Frontend, build in this order (use `/frontend/src/mocks/*` fixture
-JSON to start immediately, don't wait for Dev A):*
-1. `tailwind.config`, design tokens (§8), shadcn/ui init
-2. `lib/api.ts` client, auth context, mock fixtures
-3. `app/(public)/page.tsx` landing, `/login`, `/register`
-4. `app/app/layout.tsx` (applicant sidebar shell) + dashboard
-5. `app/app/projects/new` (5-step wizard)
-6. `app/app/projects/[id]/overview` — **Project Control Centre**
-7. `app/app/projects/[id]/approvals` + `approval-map` (React Flow graph)
-8. `app/app/projects/[id]/documents`
-9. `app/app/projects/[id]/applications/[appId]` (tabbed workspace)
-10. queries, inspections, compliance, renewals, incentives, activity pages
-11. `app/government/layout.tsx` + dashboard + work-queue + `applications/[id]`
-12. `app/government/sla`, `bottlenecks`, `analytics`
-13. `app/admin/layout.tsx` + approvals, rules, dependencies, sla, incentives, audit-log
+### Phase 1 — Backend foundation — ✅ COMPLETE (built & running — do not modify)
+- JWT authentication and role-based authorization.
+- Project and organization management.
+- Data-driven regulatory analysis.
+- Approval roadmap and dependency logic.
+- Document vault and application foundation.
+- Queries, inspections, SLA, incentives, compliance, analytics,
+  notifications, and audit services.
+- Government integration through `GovernmentIntegrationAdapter` with only
+  `MockGovernmentAdapter`.
 
-**Phase 2 (both, ~1 day):** swap Dev B's fixtures for real API calls, run the
-full demo storyline (§9) end-to-end, fix breaks.
+### Phase 2 — Frontend integration — ✅ COMPLETE (built & running — do not modify)
+- Build applicant, government, PCB officer, and admin interfaces against the
+  backend API.
+- Replace development fixtures with real API calls.
+- Verify authentication, navigation, dashboard data, and core API flows.
+- Verify the frontend, Express API, and Supabase database work together.
+- Close integration defects before declaring Phase 2 complete.
 
-**Phase 3 (both):** loading/empty/error states, responsive pass, basic
-accessibility (labels, keyboard nav, no color-only status), rehearse demo.
+### Phase 3 — Core application workflows — ⬜ NEXT (start here)
+- Application detail and status transitions.
+- Document upload, reuse, replacement, verification, and expiry.
+- Readiness check → correction → re-check → submission.
+- Query lifecycle: officer raises → applicant responds → officer closes.
+- Next-best-action controls must open real workflows.
+- Application timeline and applicant-side inspection actions.
+
+### Phase 4 — Regulatory intelligence
+- Project profile → applicable approvals.
+- Explainable applicability reasons.
+- Conditional document requirements.
+- Approval prerequisites, downstream effects, and parallel work.
+- Rule-driven SLA, inspection, and compliance requirements.
+
+### Phase 5 — Government processing
+- Operational government work queue.
+- Application review and document verification.
+- Query creation and status actions.
+- Department-aware permissions and data.
+- PCB-specific workflow/data within the shared government portal.
+- Inspection assignment, scheduling, findings, and corrective actions.
+
+### Phase 6 — SLA, notifications, and controlled escalation
+- SLA countdowns, at-risk states, and breaches from configured policies.
+- Notifications for assignments, queries, document issues, inspections,
+  approvals, and renewals.
+- Configured SLA escalation levels.
+- Keep the full grievance/escalation module out of scope unless explicitly
+  added to the product scope.
+
+### Phase 7 — Compliance, renewals, and incentives
+- Compliance obligations, due dates, and status tracking.
+- Renewal workflow and reminders.
+- Incentive discovery with eligibility reasons.
+- Use "potentially applicable" wording; never imply guaranteed benefits.
+
+### Phase 8 — Admin and master data
+- Approval catalog management.
+- Regulatory rule management.
+- Dependency management.
+- SLA policy management.
+- Incentive scheme management.
+- Audit-log viewing.
+- Verify configuration changes affect application behavior without a
+  frontend redeploy.
+
+### Phase 9 — Analytics and bottlenecks
+- Government workload and processing-time metrics.
+- SLA risk/breach metrics.
+- Query and inspection delay metrics.
+- Approval-stage and department bottleneck views.
+- All KPIs and charts must come from stored application/event data.
+
+### Phase 10 — Reliability, security, and UX hardening
+- Complete loading, empty, and error states.
+- Responsive behavior and accessibility.
+- Backend authorization checks for role-sensitive actions.
+- Input validation, secure file handling, CORS, rate limiting, and safe
+  environment configuration.
+- Clean production build and consistent API error handling.
+
+### Phase 11 — Final integration and SIH demo
+- Run the complete demo storyline from a clean seeded database.
+- Verify Entrepreneur, Government Officer, PCB Officer, and Admin journeys.
+- Confirm real persisted data across the main workflow.
+- Confirm no critical API or console errors in the demo path.
+- Freeze the demo build only after §10 is satisfied.
 
 ## 7. API contract — freeze before Phase 1
 
@@ -232,6 +278,23 @@ accessibility (labels, keyboard nav, no color-only status), rehearse demo.
 13. Close on differentiation: roadmap + dependency graph + explainability + bottleneck intelligence + lifecycle compliance, all config-driven
 
 ## 10. Definition of done
-App boots clean, `migrate` + `seed` work from scratch, every P0 checkbox in
-§2 is true, the demo storyline in §9 runs with no console errors, all three
-role logins work end-to-end.
+
+The product is complete only when all of the following are true:
+
+- Frontend and backend boot cleanly using the documented local setup.
+- Database initialization/migrations and seed work from a clean Supabase
+  database.
+- Every P0 requirement in §2 is implemented with real persisted data.
+- The demo storyline in §9 runs end-to-end without critical API or console
+  errors.
+- Entrepreneur, Government Officer, PCB Officer, and Admin journeys work
+  end-to-end; PCB Officer uses the shared government portal with
+  department-aware data and permissions.
+- Implemented workflow controls lead to real pages and state-changing API
+  operations rather than dead links.
+- Frontend has no direct Supabase database access.
+- Regulatory outputs are explainable and data-driven.
+- Government analytics and bottlenecks are computed from stored data/events,
+  not fabricated static numbers.
+- Any schema extension is represented by a versioned SQL migration in the
+  repository.

@@ -84,7 +84,7 @@ export async function getProjectApprovalDetail(projectApprovalId: string) {
   }));
 
   // 5. Prerequisites — look up in this project's approval set
-  const paByTypeId = new Map(
+  const paByTypeId = new Map<string, any>(
     pa.project.project_approvals.map((p) => [p.approval_type_id, p])
   );
 

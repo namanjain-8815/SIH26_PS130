@@ -5,7 +5,7 @@ This file is "how do I actually build and run this."
 
 ## 1. Prerequisites
 - Node.js 18+
-- PostgreSQL 14+ (local install, or a free hosted instance — Supabase, Neon, Railway all work; you only need the connection string, not their auth/storage products)
+- Supabase account (or local PostgreSQL instance with Supabase API)
 - npm or pnpm
 - git
 
@@ -14,53 +14,76 @@ This file is "how do I actually build and run this."
 git clone <repo-url>
 cd project
 
-cp backend/.env.example backend/.env    # set DATABASE_URL, JWT_SECRET
-cp frontend/.env.example frontend/.env  # set NEXT_PUBLIC_API_URL=http://localhost:4000/api
+# Backend environment configuration
+cp backend/.env.example backend/.env
+# In backend/.env, set:
+# SUPABASE_URL=https://<your-project-ref>.supabase.co
+# SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
+# SUPABASE_SECRET_KEY=sb_secret_...
+# SUPABASE_JWKS_URL=https://<your-project-ref>.supabase.co/auth/v1/.well-known/jwks.json
+# JWT_SECRET=your-jwt-secret
 
-cd backend
-npm install
-npx prisma migrate dev
-npm run seed
-npm run dev          # http://localhost:4000
+# Frontend environment configuration
+cp frontend/.env.local.example frontend/.env.local
+# NEXT_PUBLIC_API_URL=http://localhost:4000/api
 
-# new terminal
-cd frontend
+# Root workspace setup (runs both frontend & backend concurrently)
 npm install
-npm run dev           # http://localhost:3000
+npm run dev              # Starts backend on :4000 & frontend on :3000
+
+# Or run separately:
+cd backend && npm install && npm run seed && npm run dev
+cd frontend && npm install && npm run dev
+
+# Testing:
+npm test                 # Run all 32 unit + integration tests
+npm run test:unit        # Run unit tests only
+npm run test:integration # Run integration tests only
 ```
 
 **Demo accounts** (password `Demo@123` for all, bcrypt-hashed in the seed
 script — never store the plaintext password anywhere except this doc and the
 seed source):
-`entrepreneur@demo.local`, `manager@demo.local`, `officer@demo.local`,
-`nodal@demo.local`, `inspector@demo.local`, `admin@demo.local`
+- `entrepreneur@demo.local` (ENTREPRENEUR)
+- `manager@demo.local` (MANAGER)
+- `officer@demo.local` (OFFICER / MIDC)
+- `pcb.officer@demo.local` (OFFICER / PCB)
+- `nodal@demo.local` (NODAL)
+- `inspector@demo.local` (INSPECTOR)
+- `admin@demo.local` (ADMIN)
 
 ## 3. Folder structure
 ```
 /backend
   /src
-    /routes        Express routers — thin, call services only
-    /services       business logic, one file per module (see plan §4)
-    /rule-engine     evaluateProjectAgainstRules() + rules/*.json
-    /middleware      auth.ts, roleGuard.ts, auditLogger.ts, errorHandler.ts
     /adapters        GovernmentIntegrationAdapter, MockGovernmentAdapter, StorageAdapter
-  /prisma
-    schema.prisma
-    seed.ts
+    /lib             supabase.ts (client), supabaseDb.ts (ORM adapter), jwt.ts, errors.ts
+    /middleware      auth.ts, roleGuard.ts, auditLogger.ts, errorHandler.ts
+    /routes          Express routers — thin, call services only
+    /rule-engine     evaluate.ts + types.ts
+    /services        business logic, one file per module
+    /types           database.ts (models & enums), express.d.ts
+    app.ts           Express application setup
+    index.ts         HTTP server entrypoint
+    seed.ts          Full database seed script
+  supabase_schema.sql Full PostgreSQL DDL schema for Supabase
 /frontend
   /src
-    /app             Next.js App Router pages (routes mirror plan §6)
+    /app             Next.js App Router pages
+      /app           Applicant portal (dashboard, approvals, projects, etc.)
+      /government    Government officer portal (work queue, SLA monitor, analytics)
+      /admin         Admin portal (approval types, rules, dependencies, audit log)
+      /login         Split-pane authentication page
     /components
-      /ui             shadcn primitives
-      /feature        domain components (ApprovalCard, ReadinessGauge, etc.)
-    /lib              api client, auth context, utils
-    /mocks            fixture JSON used before an endpoint exists
+      /ui            StatusBadge, Skeleton, EmptyState, ErrorState
+    /lib             api.ts (typed API client), auth-context.tsx, utils.ts
+    /types           Frontend domain types & API payloads
 ```
 
 ## 4. Conventions
 - TypeScript strict mode, both sides
-- One Express router file per resource; **no Prisma calls inside route
-  files** — routes call a service, services call Prisma
+- One Express router file per resource; **no direct DB queries inside route
+  files** — routes call a service, services call the data access layer (`supabaseDb`)
 - Branch naming: `dev-a/<feature>` for backend, `dev-b/<feature>` for
   frontend; commit prefix `[A]`/`[B]`
 - Merge to `main` at least twice a day — the API contract is the only shared
@@ -69,9 +92,8 @@ seed source):
   the other dev immediately** — it's the interface contract between you
 
 ## 5. How the rule engine works (read this before touching regulatory logic)
-- Rules are **data**, not code: seeded rows in `ApplicabilityRule`
-  (`rule-engine/rules/*.json` at seed time), each a simple AND-group of
-  `{field, operator, value}` conditions against the project profile
+- Rules are **data**, not code: seeded rows in `ApplicabilityRule`,
+  each a simple AND-group of `{field, operator, value}` conditions against the project profile
 - `evaluateProjectAgainstRules(project, rules)` returns
   `{applicableApprovals, reasons, requiredDocuments, dependencies, incentives, warnings}`
 - Every applicable approval must carry a human-readable `reason` string —
@@ -95,10 +117,8 @@ seed source):
 
 ## 7. Troubleshooting
 - **CORS errors** → confirm Express `cors()` allows `http://localhost:3000`
-- **Migration drift in dev** → `npx prisma migrate reset` then `npm run seed`
-  (dev DB only, never run reset against anything with real data)
-- **Seed script must be idempotent** — use upserts, not raw inserts, so it's
-  safe to re-run
+- **Database resets in dev** → re-run `npm run seed` (upserts are idempotent)
+- **Seed script is idempotent** → uses upserts and fixed IDs, so re-running is always safe
 - **Dashboard numbers look wrong** → they must always be derived from actual
   rows (see plan §10 "definition of done" — no hardcoded counts anywhere)
 

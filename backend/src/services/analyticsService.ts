@@ -7,22 +7,49 @@ import { prisma } from '../lib/prisma';
  * Returns real application data from the database.
  * (IMPLEMENTATION_PLAN.md §20)
  */
+const VALID_APPLICATION_STATUSES = new Set([
+  'DRAFT',
+  'IN_PREPARATION',
+  'SUBMITTED',
+  'UNDER_REVIEW',
+  'QUERY_RAISED',
+  'INSPECTION_PENDING',
+  'INSPECTION_SCHEDULED',
+  'AWAITING_DEPARTMENT',
+  'AWAITING_APPLICANT',
+  'RECOMMENDED',
+  'APPROVED',
+  'REJECTED',
+]);
+
+const VALID_PRIORITIES = new Set(['CRITICAL', 'HIGH', 'MEDIUM', 'LOW']);
+
 export async function getWorkQueue(filters: {
   department_id?: string;
   status?: string;
   priority?: string;
   district?: string;
 }) {
+  const statusUpper = filters.status?.toUpperCase();
+  const priorityUpper = filters.priority?.toUpperCase();
+
+  const status = statusUpper && VALID_APPLICATION_STATUSES.has(statusUpper) ? (statusUpper as never) : undefined;
+  const priority = priorityUpper && VALID_PRIORITIES.has(priorityUpper) ? (priorityUpper as never) : undefined;
+  const department_id =
+    filters.department_id && filters.department_id !== 'undefined' && filters.department_id !== 'null'
+      ? filters.department_id
+      : undefined;
+  const district =
+    filters.district && filters.district !== 'undefined' && filters.district !== 'null'
+      ? filters.district
+      : undefined;
+
   const apps = await prisma.application.findMany({
     where: {
-      ...(filters.department_id ? { department_id: filters.department_id } : {}),
-      ...(filters.status ? { status: filters.status as never } : {}),
-      ...(filters.priority
-        ? { project_approval: { priority: filters.priority as never } }
-        : {}),
-      ...(filters.district
-        ? { project_approval: { project: { district: filters.district } } }
-        : {}),
+      ...(department_id ? { department_id } : {}),
+      ...(status ? { status } : {}),
+      ...(priority ? { project_approval: { priority } } : {}),
+      ...(district ? { project_approval: { project: { district } } } : {}),
     },
     include: {
       project_approval: {
@@ -45,17 +72,17 @@ export async function getWorkQueue(filters: {
     status: app.status,
     submitted_at: app.submitted_at,
     due_date: app.due_date,
-    approval_name: app.project_approval.approval_type.name,
-    approval_category: app.project_approval.approval_type.category,
-    priority: app.project_approval.priority,
-    org_name: app.project_approval.project.organization.legal_name,
-    project_name: app.project_approval.project.name,
-    district: app.project_approval.project.district,
-    department_name: app.department.name,
+    approval_name: app.project_approval?.approval_type?.name ?? 'Unknown Approval',
+    approval_category: app.project_approval?.approval_type?.category ?? 'GENERAL',
+    priority: app.project_approval?.priority ?? 'MEDIUM',
+    org_name: app.project_approval?.project?.organization?.legal_name ?? 'Unknown Organization',
+    project_name: app.project_approval?.project?.name ?? 'Unknown Project',
+    district: app.project_approval?.project?.district ?? 'Unknown District',
+    department_name: app.department?.name ?? 'Unknown Department',
     sla_status: app.sla_instance?.status ?? null,
     sla_due_date: app.sla_instance?.due_date ?? null,
-    open_queries: app.queries.length,
-    upcoming_inspections: app.inspections.length,
+    open_queries: app.queries?.length ?? 0,
+    upcoming_inspections: app.inspections?.length ?? 0,
   }));
 }
 
@@ -174,8 +201,12 @@ export async function getAnalyticsSummary() {
     completedWithTime.length > 0
       ? Math.round(
           completedWithTime.reduce((sum, a) => {
-            const days = (a.completed_at!.getTime() - a.submitted_at!.getTime()) / 86_400_000;
-            return sum + days;
+            const completedTime =
+              a.completed_at instanceof Date ? a.completed_at.getTime() : new Date(a.completed_at!).getTime();
+            const submittedTime =
+              a.submitted_at instanceof Date ? a.submitted_at.getTime() : new Date(a.submitted_at!).getTime();
+            const days = (completedTime - submittedTime) / 86_400_000;
+            return sum + (isNaN(days) ? 0 : days);
           }, 0) / completedWithTime.length
         )
       : null;
@@ -189,7 +220,7 @@ export async function getAnalyticsSummary() {
   // Applications by district
   const byDistrict = new Map<string, number>();
   for (const app of applications) {
-    const district = app.project_approval.project.district;
+    const district = app.project_approval?.project?.district ?? 'Unknown';
     byDistrict.set(district, (byDistrict.get(district) ?? 0) + 1);
   }
 

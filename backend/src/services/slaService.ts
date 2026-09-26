@@ -1,5 +1,5 @@
 import { prisma } from '../lib/prisma';
-import { SLAStatus } from '@prisma/client';
+import { SLAStatus } from '../types/database';
 
 /**
  * Compute SLA status for a single application.

@@ -116,7 +116,7 @@ export async function runReadinessCheck(applicationId: string) {
     (dr) => dr.mandatory
   );
 
-  const attachedDocMap = new Map(
+  const attachedDocMap = new Map<string, any>(
     application.application_documents.map((ad) => [ad.document.document_type, ad])
   );
 

@@ -31,7 +31,7 @@ export async function getDependencyGraph(projectId: string) {
   });
 
   // Build lookup by approval_type_id → ProjectApproval
-  const paByTypeId = new Map(projectApprovals.map((pa) => [pa.approval_type_id, pa]));
+  const paByTypeId = new Map<string, any>(projectApprovals.map((pa) => [pa.approval_type_id, pa]));
   const approvalTypeIds = new Set(projectApprovals.map((pa) => pa.approval_type_id));
 
   // Fetch all relevant dependencies (both ends in this project's approval set)
@@ -134,7 +134,7 @@ export async function getCanStartNow(projectId: string) {
   });
 
   const approvalTypeIds = projectApprovals.map((pa) => pa.approval_type_id);
-  const paByTypeId = new Map(projectApprovals.map((pa) => [pa.approval_type_id, pa]));
+  const paByTypeId = new Map<string, any>(projectApprovals.map((pa) => [pa.approval_type_id, pa]));
 
   const dependencies = await prisma.approvalDependency.findMany({
     where: {
