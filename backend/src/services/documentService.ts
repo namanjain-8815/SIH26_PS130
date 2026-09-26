@@ -60,20 +60,65 @@ export async function getDocument(id: string) {
 }
 
 export async function uploadDocument(
-  orgId: string,
+  orgId: string | undefined,
   projectId: string,
   documentType: string,
   originalName: string,
-  buffer: Buffer
+  buffer: Buffer,
+  expiryDate?: Date,
+  issuedDate?: Date,
+  applicationId?: string
 ) {
+  let resolvedOrgId = orgId;
+  if (!resolvedOrgId) {
+    const proj = await prisma.project.findUnique({ where: { id: projectId } });
+    resolvedOrgId = proj?.org_id;
+  }
+  if (!resolvedOrgId) throw new NotFoundError('Organization not found for project');
+
   const stored = await storage.save(originalName, buffer);
-  return prisma.document.create({
+  const doc = await prisma.document.create({
     data: {
-      org_id: orgId,
+      org_id: resolvedOrgId,
       project_id: projectId,
       document_type: documentType,
       file_name: stored.file_name,
       file_url: stored.url,
+      issued_date: issuedDate,
+      expiry_date: expiryDate,
+      verification_status: 'PENDING',
+    },
+  });
+
+  if (applicationId) {
+    await prisma.applicationDocument.upsert({
+      where: { application_id_document_id: { application_id: applicationId, document_id: doc.id } },
+      update: {},
+      create: { application_id: applicationId, document_id: doc.id, validation_status: 'PENDING' },
+    });
+  }
+
+  return doc;
+}
+
+export async function replaceDocument(
+  id: string,
+  originalName: string,
+  buffer: Buffer,
+  expiryDate?: Date
+) {
+  const existing = await prisma.document.findUnique({ where: { id } });
+  if (!existing) throw new NotFoundError('Document not found');
+
+  const stored = await storage.save(originalName, buffer);
+  return prisma.document.update({
+    where: { id },
+    data: {
+      file_name: stored.file_name,
+      file_url: stored.url,
+      version: (existing.version || 1) + 1,
+      verification_status: 'PENDING',
+      expiry_date: expiryDate ?? existing.expiry_date,
     },
   });
 }
@@ -88,7 +133,28 @@ export async function updateDocument(
 ) {
   const doc = await prisma.document.findUnique({ where: { id } });
   if (!doc) throw new NotFoundError('Document not found');
-  return prisma.document.update({ where: { id }, data: data as never });
+
+  const updated = await prisma.document.update({ where: { id }, data: data as never });
+
+  // If verification status changed, update application document validation status
+  if (data.verification_status) {
+    const valStatus =
+      data.verification_status === 'VERIFIED'
+        ? 'VALID'
+        : data.verification_status === 'REJECTED' || data.verification_status === 'EXPIRED'
+        ? 'INVALID'
+        : 'PENDING';
+
+    const appDocs = await prisma.applicationDocument.findMany({ where: { document_id: id } });
+    for (const ad of appDocs) {
+      await prisma.applicationDocument.update({
+        where: { id: ad.id },
+        data: { validation_status: valStatus },
+      });
+    }
+  }
+
+  return updated;
 }
 
 /**

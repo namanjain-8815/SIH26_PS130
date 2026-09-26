@@ -30,9 +30,17 @@ export async function raiseQuery(
   });
   if (!application) throw new NotFoundError('Application not found');
 
+  let assigneeId = data.assigned_to;
+  if (!assigneeId && application.project_approval?.project?.org_id) {
+    const orgUser = await prisma.user.findFirst({
+      where: { org_id: application.project_approval.project.org_id, role: 'ENTREPRENEUR' },
+    });
+    assigneeId = orgUser?.id;
+  }
+
   const query = await prisma.$transaction(async (tx) => {
     const q = await tx.query.create({
-      data: { application_id: applicationId, created_by: createdBy, ...data },
+      data: { application_id: applicationId, created_by: createdBy, assigned_to: assigneeId, ...data },
     });
 
     await tx.applicationEvent.create({
@@ -43,13 +51,12 @@ export async function raiseQuery(
     await tx.application.update({ where: { id: applicationId }, data: { status: 'QUERY_RAISED' } });
 
     // Notify the assignee (or entrepreneur) about the query
-    const assigneeId = data.assigned_to;
     if (assigneeId) {
       await tx.notification.create({
         data: {
           user_id: assigneeId,
           title: `Query Raised — ${application.project_approval.approval_type.name}`,
-          message: `A query has been raised on your application (${application.application_number}): "${data.subject}". Please respond before ${data.deadline?.toDateString() ?? 'the deadline'}.`,
+          message: `A query has been raised on your application (${application.application_number}): "${data.subject}". Please respond before ${data.deadline ? new Date(data.deadline).toDateString() : 'the deadline'}.`,
           type: 'warning',
         },
       });
@@ -108,6 +115,24 @@ export async function updateQueryStatus(
           notes: `Query resolved: "${query.subject}"`,
         },
       });
+
+      // Check if all queries on this application are resolved
+      const remaining = await tx.query.findMany({ where: { application_id: query.application_id } });
+      const stillOpen = remaining.some((q) => q.id !== queryId && q.status !== 'RESOLVED');
+      if (!stillOpen) {
+        await tx.application.update({
+          where: { id: query.application_id },
+          data: { status: 'UNDER_REVIEW' },
+        });
+        await tx.applicationEvent.create({
+          data: {
+            application_id: query.application_id,
+            actor_id: actorId,
+            event_type: 'status_changed:UNDER_REVIEW',
+            notes: 'All outstanding queries have been resolved. Application returned to under review.',
+          },
+        });
+      }
     }
     return updated;
   });

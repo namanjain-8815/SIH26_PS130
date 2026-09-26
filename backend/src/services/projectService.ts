@@ -101,20 +101,22 @@ export async function getControlCentre(projectId: string) {
     .filter((a) => a.application?.sla_instance?.status === 'AT_RISK' || a.application?.sla_instance?.status === 'BREACHED')
     .map((a) => ({
       approval_name: a.approval_type.name,
-      application_number: a.application?.application_number,
-      sla_status: a.application?.sla_instance?.status,
-      due_date: a.application?.sla_instance?.due_date,
+      application_id: a.application?.id ?? null,
+      application_number: a.application?.application_number ?? null,
+      sla_status: a.application?.sla_instance?.status ?? null,
+      due_date: a.application?.sla_instance?.due_date ?? null,
     }));
 
   // Pending queries across all applications
   const pendingQueries = approvals.flatMap((a) =>
     (a.application?.queries ?? []).map((q) => ({
       query_id: q.id,
+      application_id: a.application?.id ?? null,
       subject: q.subject,
       priority: q.priority,
       status: q.status,
       deadline: q.deadline,
-      application_number: a.application?.application_number,
+      application_number: a.application?.application_number ?? null,
       approval_name: a.approval_type.name,
     }))
   );
@@ -123,11 +125,12 @@ export async function getControlCentre(projectId: string) {
   const upcomingInspections = approvals.flatMap((a) =>
     (a.application?.inspections ?? []).map((i) => ({
       inspection_id: i.id,
+      application_id: a.application?.id ?? null,
       scheduled_date: i.scheduled_date,
       location: i.location,
       purpose: i.purpose,
       approval_name: a.approval_type.name,
-      application_number: a.application?.application_number,
+      application_number: a.application?.application_number ?? null,
     }))
   );
 
@@ -160,17 +163,30 @@ export async function getControlCentre(projectId: string) {
       }
     : null;
 
-  // Next best action
+  // Next best action & direct workflow link
   let nextBestAction: string | null = null;
+  let nextBestActionLink: string | null = null;
   if (pendingQueries.length > 0) {
     const q = pendingQueries.find((q) => q.status === 'OPEN');
-    if (q) nextBestAction = `Respond to open query: "${q.subject}" on ${q.approval_name}`;
+    if (q) {
+      nextBestAction = `Respond to open query: "${q.subject}" on ${q.approval_name}`;
+      nextBestActionLink = q.application_id ? `/app/applications/${q.application_id}?tab=queries` : `/app/approvals`;
+    }
   }
   if (!nextBestAction && blockedApprovals.length > 0) {
     nextBestAction = `Unblock ${blockedApprovals[0].approval_type.name}: resolve prerequisites to proceed`;
+    nextBestActionLink = `/app/approvals`;
   }
   if (!nextBestAction && slaAlerts.length > 0) {
     nextBestAction = `Follow up on ${slaAlerts[0].approval_name} — configured SLA is ${slaAlerts[0].sla_status?.toLowerCase().replace('_', ' ')}`;
+    nextBestActionLink = slaAlerts[0].application_id ? `/app/applications/${slaAlerts[0].application_id}` : `/app/approvals`;
+  }
+  if (!nextBestAction) {
+    const readyToStart = approvals.find((a) => a.status === 'NOT_STARTED');
+    if (readyToStart) {
+      nextBestAction = `Start application for ${readyToStart.approval_type.name}`;
+      nextBestActionLink = `/app/approvals`;
+    }
   }
 
   return {

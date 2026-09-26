@@ -20,6 +20,14 @@ router.post('/projects/:id/inspections', requireAuth, async (req, res, next) => 
   }
 });
 
+router.post('/inspections', requireAuth, async (req, res, next) => {
+  try {
+    res.status(201).json(await inspectionService.scheduleInspection(req.body));
+  } catch (err) {
+    next(err);
+  }
+});
+
 // Officer/inspector view per contract: GET /api/inspections?inspector_id=
 router.get('/inspections', requireAuth, async (req, res, next) => {
   try {
@@ -41,6 +49,14 @@ router.patch('/inspections/:id', requireAuth, async (req, res, next) => {
 router.post('/inspections/:id/findings', requireAuth, async (req, res, next) => {
   try {
     res.status(201).json(await inspectionService.recordFinding(req.params.id, req.body));
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.patch('/inspections/findings/:findingId', requireAuth, async (req, res, next) => {
+  try {
+    res.json(await inspectionService.updateFinding(req.params.findingId, req.user!.id, req.body));
   } catch (err) {
     next(err);
   }

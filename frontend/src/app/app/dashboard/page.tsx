@@ -73,7 +73,7 @@ export default function DashboardPage() {
               label="Total Approvals"
               value={cc.approvals.total}
               sub="View all →"
-              href={`/app/projects/${DEMO_PROJECT_ID}/approvals`}
+              href="/app/approvals"
               color="blue"
               icon={<Circle className="w-5 h-5" />}
             />
@@ -81,7 +81,7 @@ export default function DashboardPage() {
               label="In Progress"
               value={cc.approvals.in_progress}
               sub="View details →"
-              href={`/app/projects/${DEMO_PROJECT_ID}/approvals`}
+              href="/app/approvals"
               color="amber"
               icon={<Clock className="w-5 h-5" />}
             />
@@ -89,7 +89,7 @@ export default function DashboardPage() {
               label="Completed"
               value={cc.approvals.completed}
               sub="Celebrate! 🎉"
-              href={`/app/projects/${DEMO_PROJECT_ID}/approvals`}
+              href="/app/approvals"
               color="green"
               icon={<CheckCircle2 className="w-5 h-5" />}
             />
@@ -97,7 +97,7 @@ export default function DashboardPage() {
               label="Pending Action"
               value={cc.approvals.blocked + cc.pending_queries.length}
               sub="Take action →"
-              href={`/app/projects/${DEMO_PROJECT_ID}/approvals`}
+              href="/app/approvals"
               color="red"
               icon={<AlertCircle className="w-5 h-5" />}
             />
@@ -132,7 +132,7 @@ export default function DashboardPage() {
             <div className="card">
               <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-gray-50">
                 <h2 className="text-sm font-semibold text-gray-900">Recent Applications</h2>
-                <Link href={`/app/projects/${DEMO_PROJECT_ID}/approvals`} className="text-xs text-primary-600 hover:underline">
+                <Link href="/app/approvals" className="text-xs text-primary-600 hover:underline">
                   View all
                 </Link>
               </div>
@@ -142,28 +142,36 @@ export default function DashboardPage() {
                 ) : (
                   <>
                     {cc.sla_alerts.slice(0, 3).map((a) => (
-                      <div key={a.application_number} className="px-5 py-3.5 flex items-center gap-3">
+                      <Link
+                        key={a.application_number}
+                        href={a.application_id ? `/app/applications/${a.application_id}` : '/app/approvals'}
+                        className="px-5 py-3.5 flex items-center gap-3 hover:bg-gray-50 transition-colors cursor-pointer"
+                      >
                         <div className="w-8 h-8 rounded-lg bg-orange-50 flex items-center justify-center flex-shrink-0">
                           <Clock className="w-4 h-4 text-orange-500" />
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-medium text-gray-900 truncate">{a.approval_name}</p>
-                          <p className="text-xs text-gray-400 mt-0.5">App #{a.application_number}</p>
+                          <p className="text-xs text-gray-400 mt-0.5">App #{a.application_number} • Open workspace →</p>
                         </div>
                         <StatusBadge status={a.sla_status ?? 'AT_RISK'} />
-                      </div>
+                      </Link>
                     ))}
                     {cc.pending_queries.slice(0, 2).map((q) => (
-                      <div key={q.query_id} className="px-5 py-3.5 flex items-center gap-3">
+                      <Link
+                        key={q.query_id}
+                        href={q.application_id ? `/app/applications/${q.application_id}?tab=queries` : '/app/approvals'}
+                        className="px-5 py-3.5 flex items-center gap-3 hover:bg-red-50/40 transition-colors cursor-pointer"
+                      >
                         <div className="w-8 h-8 rounded-lg bg-red-50 flex items-center justify-center flex-shrink-0">
                           <FileQuestion className="w-4 h-4 text-red-500" />
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-medium text-gray-900 truncate">{q.approval_name}</p>
-                          <p className="text-xs text-gray-400 mt-0.5">Query: {q.subject}</p>
+                          <p className="text-xs text-gray-400 mt-0.5">Query: {q.subject} • Respond →</p>
                         </div>
                         <StatusBadge status="QUERY_RAISED" />
-                      </div>
+                      </Link>
                     ))}
                   </>
                 )}
@@ -222,7 +230,7 @@ export default function DashboardPage() {
                     <p className="text-xs text-primary-100 font-medium uppercase tracking-wide">Next Best Action</p>
                     <p className="text-white font-semibold text-sm mt-1">{cc.next_best_action}</p>
                     <Link
-                      href={`/app/projects/${DEMO_PROJECT_ID}/approvals`}
+                      href={cc.next_best_action_link ?? '/app/approvals'}
                       className="inline-flex items-center gap-1 mt-3 text-xs text-primary-100 hover:text-white font-medium"
                     >
                       Take action <ChevronRight className="w-3.5 h-3.5" />

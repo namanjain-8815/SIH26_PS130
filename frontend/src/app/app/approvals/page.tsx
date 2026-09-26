@@ -1,7 +1,9 @@
 'use client';
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { projectsApi, projectApprovalsApi } from '@/lib/api';
+import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { projectsApi, projectApprovalsApi, applicationsApi } from '@/lib/api';
 import { StatusBadge, PriorityBadge } from '@/components/ui/StatusBadge';
 import { CardSkeleton, EmptyState, ErrorState } from '@/components/ui/States';
 import { useState } from 'react';
@@ -180,6 +182,18 @@ function ApprovalRow({ approval, selected, onClick }: { approval: ProjectApprova
 }
 
 function ApprovalDetail({ detail }: { detail: ProjectApprovalDetail }) {
+  const router = useRouter();
+  const qc = useQueryClient();
+
+  const startApp = useMutation({
+    mutationFn: (projectApprovalId: string) => applicationsApi.create(projectApprovalId),
+    onSuccess: (newApp) => {
+      qc.invalidateQueries({ queryKey: ['project-approvals'] });
+      qc.invalidateQueries({ queryKey: ['project-approval-detail', detail.id] });
+      router.push(`/app/applications/${newApp.id}`);
+    },
+  });
+
   return (
     <div className="space-y-4">
       {/* Header */}
@@ -204,6 +218,63 @@ function ApprovalDetail({ detail }: { detail: ProjectApprovalDetail }) {
       <div className="card p-4 bg-primary-600 text-white">
         <p className="text-xs text-primary-100 font-medium uppercase tracking-wide mb-1">Recommended Next Action</p>
         <p className="text-sm">{detail.next_action}</p>
+      </div>
+
+      {/* Application Workspace */}
+      <div className="card p-4">
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-sm font-semibold text-gray-900">Application Workspace</p>
+          {detail.application ? (
+            <StatusBadge status={detail.application.status} />
+          ) : (
+            <span className="text-[11px] text-gray-500 bg-gray-100 px-2 py-0.5 rounded font-medium">Not Started</span>
+          )}
+        </div>
+
+        {detail.application ? (
+          <div>
+            <div className="grid grid-cols-2 gap-2 text-xs mb-3">
+              <div>
+                <p className="text-gray-400">App Number</p>
+                <p className="font-mono font-medium text-gray-800">{detail.application.application_number}</p>
+              </div>
+              <div>
+                <p className="text-gray-400">Department</p>
+                <p className="font-medium text-gray-800">{detail.application.department?.name ?? '—'}</p>
+              </div>
+              <div>
+                <p className="text-gray-400">Submitted</p>
+                <p className="font-medium text-gray-800">{formatDate(detail.application.submitted_at)}</p>
+              </div>
+              <div>
+                <p className="text-gray-400">Open Queries</p>
+                <p className={`font-medium ${detail.application.open_queries > 0 ? 'text-orange-600' : 'text-gray-800'}`}>
+                  {detail.application.open_queries}
+                </p>
+              </div>
+            </div>
+            <Link
+              href={`/app/applications/${detail.application.id}`}
+              className="w-full btn-primary text-xs py-2 flex items-center justify-center gap-1.5"
+            >
+              Open Application Workspace <ChevronRight className="w-3.5 h-3.5" />
+            </Link>
+          </div>
+        ) : (
+          <div>
+            <p className="text-xs text-gray-500 mb-3 leading-relaxed">
+              Open a dedicated workspace to assemble required documentation, pre-validate readiness, submit to the department, and track status.
+            </p>
+            <button
+              onClick={() => startApp.mutate(detail.id)}
+              disabled={startApp.isPending}
+              className="w-full btn-primary text-xs py-2 flex items-center justify-center gap-1.5"
+            >
+              <Play className="w-3.5 h-3.5" />
+              {startApp.isPending ? 'Initiating Workspace...' : 'Start Application Workspace'}
+            </button>
+          </div>
+        )}
       </div>
 
       {/* SLA */}
@@ -235,36 +306,6 @@ function ApprovalDetail({ detail }: { detail: ProjectApprovalDetail }) {
                 <p className="font-medium text-gray-800">{detail.sla.time_remaining}</p>
               </div>
             )}
-          </div>
-        </div>
-      )}
-
-      {/* Application */}
-      {detail.application && (
-        <div className="card p-4">
-          <div className="flex items-center justify-between mb-3">
-            <p className="text-sm font-semibold text-gray-900">Application</p>
-            <StatusBadge status={detail.application.status} />
-          </div>
-          <div className="grid grid-cols-2 gap-2 text-xs">
-            <div>
-              <p className="text-gray-400">App Number</p>
-              <p className="font-mono font-medium text-gray-800">{detail.application.application_number}</p>
-            </div>
-            <div>
-              <p className="text-gray-400">Department</p>
-              <p className="font-medium text-gray-800">{detail.application.department?.name ?? '—'}</p>
-            </div>
-            <div>
-              <p className="text-gray-400">Submitted</p>
-              <p className="font-medium text-gray-800">{formatDate(detail.application.submitted_at)}</p>
-            </div>
-            <div>
-              <p className="text-gray-400">Open Queries</p>
-              <p className={`font-medium ${detail.application.open_queries > 0 ? 'text-orange-600' : 'text-gray-800'}`}>
-                {detail.application.open_queries}
-              </p>
-            </div>
           </div>
         </div>
       )}

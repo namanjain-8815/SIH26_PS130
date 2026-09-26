@@ -9,13 +9,32 @@ export async function listApplications(projectId: string) {
   });
 }
 
-export async function createApplication(projectApprovalId: string, departmentId: string) {
+export async function createApplication(projectApprovalId: string, departmentId?: string) {
+  let resolvedDeptId = departmentId;
+  if (!resolvedDeptId) {
+    const pa = await prisma.projectApproval.findUnique({
+      where: { id: projectApprovalId },
+      include: { approval_type: true },
+    });
+    if (pa) {
+      const depts = await prisma.department.findMany();
+      const match = depts.find(
+        (d) =>
+          d.name.toLowerCase().includes(pa.approval_type.authority.toLowerCase()) ||
+          pa.approval_type.authority.toLowerCase().includes(d.name.toLowerCase())
+      );
+      resolvedDeptId = match?.id ?? depts[0]?.id;
+    }
+  }
+  if (!resolvedDeptId) throw new NotFoundError('Department could not be determined');
+
   const application_number = `APP-${Date.now().toString(36).toUpperCase()}`;
   const app = await prisma.application.create({
     data: {
       project_approval_id: projectApprovalId,
-      department_id: departmentId,
+      department_id: resolvedDeptId,
       application_number,
+      status: 'IN_PREPARATION',
     },
   });
   // Create initial event
@@ -33,11 +52,11 @@ export async function getApplication(id: string) {
   const application = await prisma.application.findUnique({
     where: { id },
     include: {
-      project_approval: { include: { approval_type: true, project: true } },
+      project_approval: { include: { approval_type: { include: { document_requirements: true } }, project: true } },
       department: true,
       application_documents: { include: { document: true } },
       queries: { include: { responses: true, creator: true }, orderBy: { created_at: 'desc' } },
-      inspections: { include: { inspector: true }, orderBy: { scheduled_date: 'asc' } },
+      inspections: { include: { inspector: true, findings: true }, orderBy: { scheduled_date: 'asc' } },
       sla_instance: true,
       events: { orderBy: { timestamp: 'asc' } },
     },
@@ -48,7 +67,37 @@ export async function getApplication(id: string) {
 
 export async function updateApplicationStatus(id: string, status: string, actorId?: string, notes?: string) {
   return prisma.$transaction(async (tx) => {
-    const updated = await tx.application.update({ where: { id }, data: { status: status as never } });
+    const app = await tx.application.findUnique({
+      where: { id },
+      include: { project_approval: true },
+    });
+    if (!app) throw new NotFoundError('Application not found');
+
+    const updateData: any = { status: status as never };
+    if (status === 'SUBMITTED' && !app.submitted_at) {
+      updateData.submitted_at = new Date();
+    }
+    if ((status === 'APPROVED' || status === 'REJECTED' || status === 'CLOSED') && !app.completed_at) {
+      updateData.completed_at = new Date();
+    }
+
+    const updated = await tx.application.update({ where: { id }, data: updateData });
+
+    // Synchronize ProjectApproval status
+    if (app.project_approval_id) {
+      if (status === 'APPROVED') {
+        await tx.projectApproval.update({
+          where: { id: app.project_approval_id },
+          data: { status: 'COMPLETED', actual_completion_date: new Date() },
+        });
+      } else if (['SUBMITTED', 'UNDER_REVIEW', 'INSPECTION_SCHEDULED', 'QUERY_RAISED'].includes(status)) {
+        await tx.projectApproval.update({
+          where: { id: app.project_approval_id },
+          data: { status: 'IN_PROGRESS' },
+        });
+      }
+    }
+
     await tx.applicationEvent.create({
       data: { application_id: id, actor_id: actorId, event_type: `status_changed:${status}`, notes },
     });
@@ -70,6 +119,14 @@ export async function attachDocument(applicationId: string, documentId: string) 
     update: {},
     create: { application_id: applicationId, document_id: documentId },
   });
+}
+
+export async function detachDocument(applicationId: string, documentId: string) {
+  const ad = await prisma.applicationDocument.findFirst({
+    where: { application_id: applicationId, document_id: documentId },
+  });
+  if (!ad) throw new NotFoundError('Attached document not found');
+  return prisma.applicationDocument.delete({ where: { id: ad.id } });
 }
 
 /**

@@ -16,13 +16,14 @@ export interface ControlCentrePayload {
   readiness: { percent: number; label: string };
   approvals: { total: number; completed: number; in_progress: number; blocked: number; not_started: number };
   blocked_approvals: Array<{ id: string; approval_name: string; blocked_reason: string | null; priority: string }>;
-  sla_alerts: Array<{ approval_name: string; application_number: string | null; sla_status: string | null; due_date: string | null }>;
-  pending_queries: Array<{ query_id: string; subject: string; priority: string; status: string; deadline: string | null; application_number: string | null; approval_name: string }>;
-  upcoming_inspections: Array<{ inspection_id: string; scheduled_date: string; location: string | null; purpose: string | null; approval_name: string; application_number: string | null }>;
+  sla_alerts: Array<{ approval_name: string; application_id?: string | null; application_number: string | null; sla_status: string | null; due_date: string | null }>;
+  pending_queries: Array<{ query_id: string; application_id?: string | null; subject: string; priority: string; status: string; deadline: string | null; application_number: string | null; approval_name: string }>;
+  upcoming_inspections: Array<{ inspection_id: string; application_id?: string | null; scheduled_date: string; location: string | null; purpose: string | null; approval_name: string; application_number: string | null }>;
   upcoming_renewals: Array<{ id: string; name: string; authority: string; frequency: string; next_due_date: string; status: string }>;
   incentive_matches: Array<{ id: string; scheme_name: string; authority: string; benefit_description: string; status: string; label: string }>;
   bottleneck: { approval_name: string; reason: string; status: string } | null;
   next_best_action: string | null;
+  next_best_action_link?: string | null;
 }
 
 export interface DependencyGraphPayload {
@@ -59,6 +60,7 @@ export interface DependencyGraphPayload {
 }
 
 export interface ProjectApprovalDetail {
+  id: string;
   approval_type: {
     id: string;
     name: string;
@@ -203,16 +205,63 @@ export interface IncentiveMatch {
   label: string;
 }
 
-export interface ApplicationItem {
+export interface ApplicationTimelineEvent {
+  id: string;
+  event_type: string;
+  timestamp: string;
+  notes: string | null;
+  actor_id?: string | null;
+  actor?: { id: string; name: string; role: string } | null;
+}
+
+export interface ApplicationDetail {
   id: string;
   application_number: string;
   status: string;
   submitted_at: string | null;
+  due_date: string | null;
+  completed_at: string | null;
   created_at: string;
+  department_id: string;
+  department: { id: string; name: string; state?: string; district?: string };
   project_approval: {
-    approval_type: { name: string; authority: string };
-    priority: string;
+    id: string;
+    project_id: string;
+    approval_type: {
+      id: string;
+      name: string;
+      authority: string;
+      category?: string;
+      description?: string;
+      default_sla_days?: number;
+      document_requirements: Array<{ id: string; document_type: string; mandatory: boolean; condition?: string | null }>;
+    };
+    project: {
+      id: string;
+      name: string;
+      sector: string;
+      district: string;
+      org_id: string;
+    };
   };
-  department: { name: string } | null;
-  sla_instance?: { status: string; due_date: string | null } | null;
+  application_documents: Array<{
+    id: string;
+    application_id: string;
+    document_id: string;
+    validation_status: string;
+    validation_notes?: string | null;
+    document: DocumentItem;
+  }>;
+  queries: QueryItem[];
+  inspections: Array<{
+    id: string;
+    scheduled_date: string;
+    status: string;
+    location: string | null;
+    purpose: string | null;
+    inspector: { id: string; name: string; email: string } | null;
+    findings: Array<{ id: string; severity: string; description: string; corrective_action: string | null; status: string }>;
+  }>;
+  sla_instance: { id: string; status: string; due_date: string | null } | null;
+  events: ApplicationTimelineEvent[];
 }

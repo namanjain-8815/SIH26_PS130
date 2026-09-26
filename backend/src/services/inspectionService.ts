@@ -48,11 +48,13 @@ export async function scheduleInspection(data: {
       data: { status: 'INSPECTION_SCHEDULED' },
     });
 
+    const schedDate = new Date(data.scheduled_date);
+
     await tx.applicationEvent.create({
       data: {
         application_id: data.application_id,
         event_type: 'inspection_scheduled',
-        notes: `Inspection scheduled for ${data.scheduled_date.toDateString()}. Location: ${data.location ?? 'TBD'}`,
+        notes: `Inspection scheduled for ${schedDate.toDateString()}. Location: ${data.location ?? 'TBD'}`,
       },
     });
 
@@ -66,7 +68,7 @@ export async function scheduleInspection(data: {
         data: {
           user_id: u.id,
           title: `Inspection Scheduled — ${application.project_approval.approval_type.name}`,
-          message: `A site inspection has been scheduled on ${data.scheduled_date.toDateString()} for application ${application.application_number}. Location: ${data.location ?? 'TBD'}`,
+          message: `A site inspection has been scheduled on ${schedDate.toDateString()} for application ${application.application_number}. Location: ${data.location ?? 'TBD'}`,
           type: 'info',
         },
       });
@@ -79,15 +81,48 @@ export async function scheduleInspection(data: {
 export async function updateInspection(
   id: string,
   actorId: string,
-  data: Partial<{ status: 'SCHEDULED' | 'COMPLETED' | 'RESCHEDULED' | 'CANCELLED'; scheduled_date: Date }>
+  data: Partial<{
+    status: 'SCHEDULED' | 'COMPLETED' | 'RESCHEDULED' | 'CANCELLED';
+    scheduled_date: Date;
+    notes?: string;
+    action?: 'confirm_readiness' | 'reschedule';
+  }>
 ) {
   const inspection = await prisma.inspection.findUnique({ where: { id } });
   if (!inspection) throw new NotFoundError('Inspection not found');
 
   return prisma.$transaction(async (tx) => {
-    const updated = await tx.inspection.update({ where: { id }, data: data as never });
+    const updateData: any = {};
+    if (data.status) {
+      updateData.status = data.status;
+    } else if (data.action === 'reschedule') {
+      updateData.status = 'RESCHEDULED';
+    }
+    if (data.scheduled_date) updateData.scheduled_date = data.scheduled_date;
 
-    if (data.status === 'COMPLETED') {
+    const updated = Object.keys(updateData).length > 0
+      ? await tx.inspection.update({ where: { id }, data: updateData })
+      : inspection;
+
+    if (data.action === 'confirm_readiness') {
+      await tx.applicationEvent.create({
+        data: {
+          application_id: inspection.application_id,
+          actor_id: actorId,
+          event_type: 'inspection_readiness_confirmed',
+          notes: data.notes || 'Applicant confirmed site readiness for inspection.',
+        },
+      });
+    } else if (data.status === 'RESCHEDULED' || data.action === 'reschedule') {
+      await tx.applicationEvent.create({
+        data: {
+          application_id: inspection.application_id,
+          actor_id: actorId,
+          event_type: 'inspection_rescheduled',
+          notes: `Inspection reschedule requested/updated${data.scheduled_date ? ` for ${new Date(data.scheduled_date).toDateString()}` : ''}. Reason: ${data.notes || 'Per applicant request'}`,
+        },
+      });
+    } else if (data.status === 'COMPLETED') {
       await tx.applicationEvent.create({
         data: {
           application_id: inspection.application_id,
@@ -107,6 +142,33 @@ export async function recordFinding(
   data: { severity: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL'; description: string; corrective_action?: string }
 ) {
   return prisma.inspectionFinding.create({ data: { inspection_id: inspectionId, ...data } });
+}
+
+export async function updateFinding(
+  findingId: string,
+  actorId: string,
+  data: Partial<{ status: string; corrective_action: string }>
+) {
+  const finding = await prisma.inspectionFinding.findUnique({ where: { id: findingId } });
+  if (!finding) throw new NotFoundError('Inspection finding not found');
+
+  return prisma.$transaction(async (tx) => {
+    const updated = await tx.inspectionFinding.update({ where: { id: findingId }, data: data as never });
+
+    const inspection = await tx.inspection.findUnique({ where: { id: finding.inspection_id } });
+    if (inspection) {
+      await tx.applicationEvent.create({
+        data: {
+          application_id: inspection.application_id,
+          actor_id: actorId,
+          event_type: 'finding_acknowledged',
+          notes: `Inspection finding updated (${data.status ?? 'acknowledged'}): "${finding.description.substring(0, 60)}..."`,
+        },
+      });
+    }
+
+    return updated;
+  });
 }
 
 export async function getInspection(id: string) {

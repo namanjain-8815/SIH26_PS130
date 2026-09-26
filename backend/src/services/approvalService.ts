@@ -145,6 +145,7 @@ export async function getProjectApprovalDetail(projectApprovalId: string) {
   }
 
   return {
+    id: pa.id,
     // 1. What is this?
     approval_type: {
       id: pa.approval_type.id,

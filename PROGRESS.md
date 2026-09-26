@@ -1,5 +1,58 @@
 # Project Progress
 
+## Phase 3 Core Application Workflows (COMPLETED ✅)
+- **1. Application Detail / Workspace & Real Status Transitions**:
+  - Created dedicated Application Workspace page at [frontend/src/app/app/applications/[id]/page.tsx](file:///c:/Users/naman/OneDrive/Desktop/SIH26_PS130/frontend/src/app/app/applications/[id]/page.tsx) with 6 interactive tabs: *Overview*, *Documents*, *Readiness Check*, *Queries*, *Site Inspection*, and *Timeline*.
+  - Implemented real status transitions: `IN_PREPARATION` → `SUBMITTED` → `UNDER_REVIEW` → `QUERY_RAISED` → `APPROVED` via `PATCH /api/applications/:id/status`.
+  - Automatically sets `submitted_at` on submission, sets `completed_at` and synchronizes linked `project_approval.status = 'COMPLETED'` on approval, updates `project_approval.status = 'IN_PROGRESS'` during active review, and records `ApplicationEvent` audit entries for every state transition.
+  - Added `POST /api/applications` alias in backend router for project-level application creation.
+
+- **2. Document Lifecycle: Upload, Reuse, Replacement, Verification & Expiry**:
+  - Enhanced [backend/src/services/documentService.ts](file:///c:/Users/naman/OneDrive/Desktop/SIH26_PS130/backend/src/services/documentService.ts) and [backend/src/routes/documents.ts](file:///c:/Users/naman/OneDrive/Desktop/SIH26_PS130/backend/src/routes/documents.ts):
+    - Added `replaceDocument(id, originalName, buffer, expiryDate)` (`POST /api/documents/:id/replace`) bumping version number (`v+1`), preserving audit history, and resetting verification status to `PENDING`.
+    - Added `detachDocument(applicationId, documentId)` (`DELETE /api/applications/:id/documents/:docId`) to cleanly unlink documents.
+    - Updated `uploadDocument` with project-level organization resolution and auto-attachment via `application_id`.
+    - Synchronized document verification: officer action (`PATCH /api/documents/:id/verify`) cascades to update `ApplicationDocument.validation_status` (`VALID`, `INVALID`, `PENDING`).
+  - Frontend Document Workspace & Vault:
+    - [frontend/src/app/app/documents/page.tsx](file:///c:/Users/naman/OneDrive/Desktop/SIH26_PS130/frontend/src/app/app/documents/page.tsx): Added interactive modals for "Upload Document", "Replace Document", "Missing Documents" quick-upload, and "View Details & Reuse" drawer.
+    - Application Workspace Documents Tab: Requirement checklist, "Attach from Vault" modal for instant reuse of approved documents, "Upload New" modal, "Replace" modal, and "Detach" action.
+
+- **3. Pre-Submission Readiness Check & Submission Workflow**:
+  - `POST /api/applications/:id/readiness-check` computes mandatory document completeness, checks validity (`VALID` vs `INVALID`/`PENDING`), detects expired files, and generates actionable blocking issues.
+  - Application Workspace Readiness Check Tab: Real-time readiness gauge, breakdown of passed/failed rules, warning badges, direct "Fix Issue" shortcuts, and an unlocked "Submit Application" action once all blocking requirements are met.
+
+- **4. Query Lifecycle: Officer Raises → Applicant Responds → Officer Closes**:
+  - Officer-side: Government Work Queue ([frontend/src/app/government/work-queue/page.tsx](file:///c:/Users/naman/OneDrive/Desktop/SIH26_PS130/frontend/src/app/government/work-queue/page.tsx)) includes "Raise Query" modal (`POST /api/queries`) with priority and description; moves application to `QUERY_RAISED` and records audit event.
+  - Applicant-side: Application Workspace Queries Tab displays the query thread, SLA badges, and applicant response form (`POST /api/queries/:id/respond`).
+  - Officer Resolution: Officer marks query `RESOLVED` (`PATCH /api/queries/:id/resolve`).
+  - Automatic Review Resumption: When the final open query is resolved, the backend automatically transitions the application status back to `UNDER_REVIEW` and logs an event.
+
+- **5. "Next Best Action" / "Take Action" Deep-Link Integration**:
+  - Backend [backend/src/services/projectService.ts](file:///c:/Users/naman/OneDrive/Desktop/SIH26_PS130/backend/src/services/projectService.ts): Enriched `getControlCentre` to provide `next_best_action_link` targeting the exact pending workflow (`/app/applications/:id?tab=documents`, `/app/applications/:id?tab=queries`, etc.), and attached `application_id` to SLA alerts, pending queries, and upcoming inspections.
+  - Applicant Dashboard ([frontend/src/app/app/dashboard/page.tsx](file:///c:/Users/naman/OneDrive/Desktop/SIH26_PS130/frontend/src/app/app/dashboard/page.tsx)): Wired the "Next Best Action" hero button to open the designated workflow. SLA alerts and pending query cards now link directly to the relevant application workspace tabs.
+  - Approvals Page ([frontend/src/app/app/approvals/page.tsx](file:///c:/Users/naman/OneDrive/Desktop/SIH26_PS130/frontend/src/app/app/approvals/page.tsx)): Added "Open Application Workspace" button when an application exists, and "Start Application Workspace" when not started.
+
+- **6. Application Timeline using Persisted Events**:
+  - `GET /api/applications/:id/timeline` retrieves chronological persisted `ApplicationEvent` records.
+  - Dedicated "Timeline & Audit Trail" tab in the Application Workspace renders icons, timestamps, actor roles, and stage transitions.
+
+- **7. Applicant-Side Site Inspection Actions**:
+  - Backend [backend/src/services/inspectionService.ts](file:///c:/Users/naman/OneDrive/Desktop/SIH26_PS130/backend/src/services/inspectionService.ts): Added safe date parsing, applicant actions in `updateInspection` (`confirm_readiness` and `reschedule` setting status to `RESCHEDULED`), and added `updateFinding(findingId, actorId, data)` (`PATCH /api/inspections/findings/:findingId`).
+  - Frontend [frontend/src/app/app/inspections/page.tsx](file:///c:/Users/naman/OneDrive/Desktop/SIH26_PS130/frontend/src/app/app/inspections/page.tsx) and Workspace Site Inspection Tab: Interactive "Confirm Site Readiness", "Request Reschedule" modal with proposed date/reason, and "Acknowledge Finding" buttons.
+
+- **Phase 3 Verification & Test Results**:
+  - **Phase 3 Integration Suite (`backend/src/tests/integration/phase3.integration.test.ts`)**: 7/7 tests passed against live Supabase data:
+    1. Workspace structure verification (`GET /api/applications/:id`).
+    2. Readiness check evaluation (`POST /api/applications/:id/readiness-check`).
+    3. Chronological timeline retrieval (`GET /api/applications/:id/timeline`).
+    4. Document lifecycle: upload, attach, replace (`POST /api/documents/:id/replace`), and detach (`DELETE /api/applications/:id/documents/:docId`).
+    5. Query lifecycle: raise → respond → resolve with auto-transition back to `UNDER_REVIEW`.
+    6. Applicant-side inspection actions: confirm readiness & request reschedule.
+    7. Application submission & status transition: `SUBMITTED` setting `submitted_at` timestamp.
+  - **Full Backend Test Suite**: 39/39 tests passed across 8 suites (100% pass rate).
+  - **Frontend Production Build**: `npm --prefix frontend run build` passed with zero errors (all 23 routes compiled cleanly).
+  - **Database Schema**: 0 changes required; all 22 existing Supabase tables and relations fully utilized and intact.
+
 ## Phase 2 Verification, Bug Fixes & Testing Suite (COMPLETED ✅)
 - **Root Workspace `npm run dev` Script**:
   - Resolved `npm error Missing script: "dev"` by adding `concurrently` to the root workspace.
@@ -94,15 +147,16 @@
 - [F8] ✅ frontend TypeScript: ZERO ERRORS (npx tsc --noEmit passes)
 
 ## In Progress / Active
-- Development servers running:
-  - Backend: `npm run dev` running on `http://localhost:4000`
-  - Frontend: `npm run dev` running on `http://localhost:3000`
+- Phase 3 Core Application Workflows: COMPLETED ✅ (All 7 workflows implemented, verified, and passing tests).
+- Backend & Frontend test suites passing 100% (39/39 tests).
+- Zero TypeScript errors across both backend and frontend.
 
-## Next Tasks
-- [ ] Add auth guard: redirect unauthenticated users to `/login`
-- [ ] Add loading skeleton to dependency graph page
+## Next Tasks (Phase 4 — Government & Administration Workflows)
+- [ ] Officer bulk actions & multi-department parallel review orchestration
+- [ ] Deemed approvals engine & auto-escalation triggers
+- [ ] Admin management workflows: approval types catalog editor, rule editor, dependency editor, SLA policy editor
 - [ ] Multi-project switcher in applicant header
-- [ ] Phase 3: UX polish, error/empty states polish, responsiveness pass
+- [ ] Auth guard enhancements / redirect unauthenticated users to `/login`
 
 ## File Structure (backend/src)
 ```

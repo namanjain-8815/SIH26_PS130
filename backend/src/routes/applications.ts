@@ -57,10 +57,30 @@ router.post('/applications/:id/readiness-check', requireAuth, async (req, res, n
   }
 });
 
+router.post('/applications', requireAuth, async (req, res, next) => {
+  try {
+    const { project_approval_id, department_id } = req.body as {
+      project_approval_id: string;
+      department_id?: string;
+    };
+    res.status(201).json(await applicationService.createApplication(project_approval_id, department_id));
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.post('/applications/:id/documents', requireAuth, async (req, res, next) => {
   try {
     const { document_id } = req.body as { document_id: string };
     res.status(201).json(await applicationService.attachDocument(req.params.id, document_id));
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete('/applications/:id/documents/:docId', requireAuth, async (req, res, next) => {
+  try {
+    res.json(await applicationService.detachDocument(req.params.id, req.params.docId));
   } catch (err) {
     next(err);
   }

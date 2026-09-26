@@ -87,21 +87,23 @@ export const projectApprovalsApi = {
 
 // Applications
 export const applicationsApi = {
-  get: (id: string) => api.get<unknown>(`/applications/${id}`),
+  get: (id: string) => api.get<import('@/types/api').ApplicationDetail>(`/applications/${id}`),
   updateStatus: (id: string, status: string, notes?: string) =>
-    api.patch(`/applications/${id}/status`, { status, notes }),
-  getTimeline: (id: string) => api.get<unknown[]>(`/applications/${id}/timeline`),
+    api.patch<{ id: string; status: string }>(`/applications/${id}/status`, { status, notes }),
+  getTimeline: (id: string) => api.get<import('@/types/api').ApplicationTimelineEvent[]>(`/applications/${id}/timeline`),
   runReadinessCheck: (id: string) => api.post<ReadinessCheckResult>(`/applications/${id}/readiness-check`),
   attachDocument: (id: string, document_id: string) =>
     api.post(`/applications/${id}/documents`, { document_id }),
-  create: (project_approval_id: string, department_id: string) =>
+  detachDocument: (id: string, document_id: string) =>
+    api.delete(`/applications/${id}/documents/${document_id}`),
+  create: (project_approval_id: string, department_id?: string) =>
     api.post<{ id: string; application_number: string }>('/applications', { project_approval_id, department_id }),
 };
 
 // Queries
 export const queriesApi = {
-  list: (applicationId: string) => api.get<unknown[]>(`/applications/${applicationId}/queries`),
-  raise: (applicationId: string, body: { subject: string; description: string; priority?: string; deadline?: string }) =>
+  list: (applicationId: string) => api.get<import('@/types/api').QueryItem[]>(`/applications/${applicationId}/queries`),
+  raise: (applicationId: string, body: { subject: string; description: string; priority?: string; deadline?: string; assigned_to?: string }) =>
     api.post(`/applications/${applicationId}/queries`, body),
   respond: (queryId: string, response_text: string) =>
     api.post(`/queries/${queryId}/respond`, { response_text }),
@@ -114,14 +116,17 @@ export const inspectionsApi = {
   listProject: (projectId: string) => api.get<unknown[]>(`/projects/${projectId}/inspections`),
   schedule: (data: object) => api.post('/inspections', data),
   update: (id: string, data: object) => api.patch(`/inspections/${id}`, data),
+  updateFinding: (findingId: string, data: object) => api.patch(`/inspections/findings/${findingId}`, data),
 };
 
 // Documents
 export const documentsApi = {
-  get: (id: string) => api.get<unknown>(`/documents/${id}`),
+  get: (id: string) => api.get<import('@/types/api').DocumentItem>(`/documents/${id}`),
   update: (id: string, data: object) => api.patch(`/documents/${id}`, data),
-  upload: (projectId: string, body: { org_id: string; document_type: string; file_name: string; file_base64: string }) =>
-    api.post(`/projects/${projectId}/documents`, body),
+  upload: (projectId: string, body: { org_id?: string; document_type: string; file_name: string; file_base64: string; expiry_date?: string; issued_date?: string; application_id?: string }) =>
+    api.post<import('@/types/api').DocumentItem>(`/projects/${projectId}/documents`, body),
+  replace: (id: string, body: { file_name: string; file_base64: string; expiry_date?: string }) =>
+    api.post<import('@/types/api').DocumentItem>(`/documents/${id}/replace`, body),
 };
 
 // Notifications
