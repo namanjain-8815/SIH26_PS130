@@ -119,6 +119,7 @@ export interface WorkQueueItem {
   org_name: string;
   project_name: string;
   district: string;
+  department_id?: string;
   department_name: string;
   sla_status: string | null;
   sla_due_date: string | null;

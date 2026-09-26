@@ -85,7 +85,7 @@ export default function InspectionsPage() {
       <div>
         <h1 className="text-lg font-bold text-gray-900">Site Inspections</h1>
         <p className="text-xs text-gray-500 mt-0.5">
-          Scheduled and completed site visits, inspector assignments, and compliance findings for your project.
+          Scheduled and completed site visits, Designated Inspection Officer assignments, and compliance findings.
         </p>
       </div>
 
@@ -270,9 +270,9 @@ function InspectionCard({
                 </span>
               )}
               {insp.inspector && (
-                <span className="flex items-center gap-1 text-xs text-gray-500">
+                <span className="flex items-center gap-1 text-xs text-gray-500" title="Designated Inspection Officer">
                   <User className="w-3.5 h-3.5" />
-                  {insp.inspector.name}
+                  Officer: {insp.inspector.name}
                 </span>
               )}
             </div>

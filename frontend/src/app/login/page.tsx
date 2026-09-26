@@ -6,10 +6,13 @@ import { useAuth } from '@/lib/auth-context';
 import { Eye, EyeOff, Building2, CheckCircle2, Zap, Shield } from 'lucide-react';
 
 const DEMO_ACCOUNTS = [
-  { label: 'Entrepreneur', email: 'entrepreneur@demo.local', role: 'ENTREPRENEUR' },
-  { label: 'Govt Officer', email: 'officer@demo.local', role: 'OFFICER' },
-  { label: 'PCB Officer', email: 'pcb.officer@demo.local', role: 'OFFICER' },
-  { label: 'Admin', email: 'admin@demo.local', role: 'ADMIN' },
+  { label: 'Applicant / Investor', email: 'entrepreneur@demo.local', role: 'ENTREPRENEUR' },
+  { label: 'Authorized Representative', email: 'manager@demo.local', role: 'MANAGER' },
+  { label: 'Competent Authority Officer · MIDC', email: 'officer@demo.local', role: 'OFFICER' },
+  { label: 'Competent Authority Officer · MPCB', email: 'pcb.officer@demo.local', role: 'OFFICER' },
+  { label: 'MAITRI Nodal Officer', email: 'nodal@demo.local', role: 'NODAL' },
+  { label: 'Designated Inspection Officer', email: 'inspector@demo.local', role: 'INSPECTOR' },
+  { label: 'System Administrator', email: 'admin@demo.local', role: 'ADMIN' },
 ];
 
 export default function LoginPage() {
@@ -51,8 +54,13 @@ export default function LoginPage() {
             <Building2 className="w-5 h-5 text-white" />
           </div>
           <div>
-            <p className="text-white font-semibold text-sm leading-none">Industrial Approvals</p>
-            <p className="text-gray-400 text-xs mt-0.5">Maharashtra Government</p>
+            <div className="flex items-center gap-2">
+              <p className="text-white font-semibold text-sm leading-none">Maharashtra Industrial Approvals</p>
+              <span className="text-[10px] bg-primary-500/20 text-primary-300 font-semibold px-1.5 py-0.5 rounded border border-primary-500/30">
+                PROTOTYPE
+              </span>
+            </div>
+            <p className="text-gray-400 text-xs mt-1">Single Window System Demonstration (SIH PS 26130)</p>
           </div>
         </div>
 
@@ -60,20 +68,20 @@ export default function LoginPage() {
           <div>
             <h1 className="text-white text-4xl font-bold leading-tight">
               One platform for all<br />
-              <span className="text-primary-400">industrial approvals</span>
+              <span className="text-primary-400">permissions & approvals</span>
             </h1>
             <p className="text-gray-400 mt-4 text-base leading-relaxed max-w-md">
-              Simplify registrations, permits, licences and compliances — from multiple departments,
-              in one unified platform.
+              Streamline permissions, approvals, clearances and statutory compliances across concerned
+              departments — built on the Maharashtra Single Window framework.
             </p>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             {[
-              { icon: CheckCircle2, title: 'Single Application', desc: 'One form for all departments' },
-              { icon: Zap,          title: 'Real-time Tracking', desc: 'Live status on every approval' },
-              { icon: Shield,       title: 'Guided Compliance',   desc: 'Never miss a renewal date' },
-              { icon: Building2,    title: 'Faster Approvals',    desc: 'Data-driven SLA monitoring' },
+              { icon: CheckCircle2, title: 'Single Window', desc: 'Unified scrutiny across authorities' },
+              { icon: Zap,          title: 'Lifecycle Scrutiny', desc: 'Real-time tracking of decisions & queries' },
+              { icon: Shield,       title: 'Compliance & Renewals', desc: 'Statutory deadline notifications' },
+              { icon: Building2,    title: 'Specified Timelines', desc: 'MAITRI specified time limit monitoring' },
             ].map(({ icon: Icon, title, desc }) => (
               <div key={title} className="bg-sidebar-active rounded-xl p-4 border border-sidebar-border/50">
                 <Icon className="w-5 h-5 text-primary-400 mb-2" />
@@ -84,9 +92,13 @@ export default function LoginPage() {
           </div>
         </div>
 
-        <p className="text-gray-500 text-xs">
-          Empowering entrepreneurs. Building a self-reliant India.
-        </p>
+        <div className="p-3.5 rounded-xl bg-sidebar-active/60 border border-sidebar-border/40 text-[11px] text-gray-400 space-y-1">
+          <p className="font-semibold text-gray-300">Prototype / Demonstration Notice</p>
+          <p>
+            Developed for Smart India Hackathon (Problem Statement 26130). This prototype demonstrates
+            single-window industrial approval orchestration and is not the official Government of Maharashtra portal.
+          </p>
+        </div>
       </div>
 
       {/* Right panel — form */}

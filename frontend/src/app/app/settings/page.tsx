@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useAuth } from '@/lib/auth-context';
+import { formatRole } from '@/lib/terminology';
 import {
   User,
   Building2,
@@ -150,7 +151,7 @@ export default function SettingsPage() {
                 <p className="text-xs text-gray-500">{user?.email ?? 'entrepreneur@demo.local'}</p>
                 <div className="flex items-center gap-2 mt-1.5">
                   <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200">
-                    {user?.role ?? 'ENTREPRENEUR'}
+                    {formatRole(user?.role)}
                   </span>
                   <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-50 text-green-700 border border-green-200">
                     Active Verified Account

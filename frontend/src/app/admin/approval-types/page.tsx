@@ -30,9 +30,14 @@ export default function ApprovalTypesPage() {
     <div className="p-6 space-y-5 animate-fade-in">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-lg font-bold text-gray-900">Approval Types</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-lg font-bold text-gray-900">Permissions / Approvals Catalogue</h1>
+            <span className="text-[10px] font-semibold bg-purple-50 text-purple-700 px-2 py-0.5 rounded border border-purple-200">
+              PROTOTYPE
+            </span>
+          </div>
           <p className="text-xs text-gray-500 mt-0.5">
-            {types.length} approval types configured · {categories.length} categories
+            {types.length} statutory permissions & approvals configured · {categories.length} categories · Master Data
           </p>
         </div>
       </div>
@@ -52,7 +57,7 @@ export default function ApprovalTypesPage() {
         <table className="w-full">
           <thead className="border-b border-gray-100">
             <tr>
-              {['Name', 'Authority', 'Category', 'SLA', 'Renewal', 'Inspection'].map(h => (
+              {['Permission / Approval Name', 'Concerned Authority', 'Category', 'Timeline', 'Renewal', 'Inspection'].map(h => (
                 <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">{h}</th>
               ))}
             </tr>

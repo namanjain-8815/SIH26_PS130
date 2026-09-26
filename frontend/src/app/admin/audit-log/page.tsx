@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { adminApi } from '@/lib/api';
 import { ErrorState, TableRowSkeleton, EmptyState } from '@/components/ui/States';
 import { formatDateTime, relativeTime } from '@/lib/utils';
+import { formatRole } from '@/lib/terminology';
 import { useState } from 'react';
 import { ScrollText, Search } from 'lucide-react';
 
@@ -96,7 +97,7 @@ export default function AuditLogPage() {
                   {log.actor ? (
                     <>
                       <p className="text-xs font-medium text-gray-800">{log.actor.name}</p>
-                      <p className="text-[10px] text-gray-400">{log.actor.role}</p>
+                      <p className="text-[10px] text-gray-400">{formatRole(log.actor.role)}</p>
                     </>
                   ) : (
                     <span className="text-xs text-gray-400">System</span>

@@ -10,6 +10,7 @@ export interface AuthUser {
   role: string;
   org_id: string | null;
   department_id: string | null;
+  department?: { id: string; name: string } | null;
 }
 
 interface AuthContextValue {

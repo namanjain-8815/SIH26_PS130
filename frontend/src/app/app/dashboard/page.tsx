@@ -43,8 +43,8 @@ export default function DashboardPage() {
             {greeting}, {user?.name?.split(' ')[0] ?? 'there'} 👋
           </h1>
           <p className="text-gray-500 text-sm mt-1">
-            {isLoading ? 'Loading your project status…' : cc
-              ? `Here's the status of your industrial approvals and next steps.`
+            {isLoading ? 'Loading your investment proposal status…' : cc
+              ? `Here's the status of your permissions, approvals and next steps.`
               : 'Welcome to the Industrial Approvals Platform.'}
           </p>
         </div>
@@ -70,9 +70,9 @@ export default function DashboardPage() {
           {/* Approval stats cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <StatCard
-              label="Total Approvals"
+              label="Permissions & Approvals"
               value={cc.approvals.total}
-              sub="View all →"
+              sub="View roadmap →"
               href="/app/approvals"
               color="blue"
               icon={<Circle className="w-5 h-5" />}
@@ -88,7 +88,7 @@ export default function DashboardPage() {
             <StatCard
               label="Completed"
               value={cc.approvals.completed}
-              sub="Celebrate! 🎉"
+              sub="Granted clearances"
               href="/app/approvals"
               color="green"
               icon={<CheckCircle2 className="w-5 h-5" />}
@@ -119,9 +119,9 @@ export default function DashboardPage() {
               />
             </div>
             <div className="flex items-center justify-between mt-3 text-xs text-gray-500">
-              <span>{cc.approvals.completed} of {cc.approvals.total} approvals obtained</span>
+              <span>{cc.approvals.completed} of {cc.approvals.total} permissions & approvals obtained</span>
               <Link href={`/app/projects/${DEMO_PROJECT_ID}/dependency-graph`} className="text-primary-600 hover:underline font-medium">
-                View dependency map →
+                View permission dependency map →
               </Link>
             </div>
           </div>
@@ -131,14 +131,14 @@ export default function DashboardPage() {
             {/* Recent / pending applications */}
             <div className="card">
               <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-gray-50">
-                <h2 className="text-sm font-semibold text-gray-900">Recent Applications</h2>
+                <h2 className="text-sm font-semibold text-gray-900">Recent Permission Applications</h2>
                 <Link href="/app/approvals" className="text-xs text-primary-600 hover:underline">
                   View all
                 </Link>
               </div>
               <div className="divide-y divide-gray-50">
                 {cc.sla_alerts.length === 0 && cc.pending_queries.length === 0 ? (
-                  <EmptyState title="No active applications" description="Run regulatory analysis to see required approvals." />
+                  <EmptyState title="No active applications" description="Run regulatory analysis to identify required permissions & approvals." />
                 ) : (
                   <>
                     {cc.sla_alerts.slice(0, 3).map((a) => (
@@ -188,7 +188,7 @@ export default function DashboardPage() {
               </div>
               <div className="divide-y divide-gray-50">
                 {cc.upcoming_renewals.length === 0 ? (
-                  <EmptyState title="No upcoming renewals" description="Your compliance calendar is clear for now." />
+                  <EmptyState title="No upcoming renewals" description="Your compliance & renewal schedule is clear for now." />
                 ) : (
                   cc.upcoming_renewals.slice(0, 4).map((r) => {
                     const daysLeft = Math.ceil((new Date(r.next_due_date).getTime() - Date.now()) / 86_400_000);

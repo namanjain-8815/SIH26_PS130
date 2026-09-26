@@ -188,9 +188,9 @@ export default function DependencyGraphPage() {
     <div className="flex flex-col h-full">
       {/* Header */}
       <div className="px-5 pt-5 pb-4 border-b border-gray-100">
-        <h1 className="text-lg font-bold text-gray-900">Approval Dependency Map</h1>
+        <h1 className="text-lg font-bold text-gray-900">Permissions & Approvals Dependency Map</h1>
         <p className="text-xs text-gray-500 mt-0.5">
-          Visualise the order in which approvals must be obtained. Green arrows = required sequence.
+          Visualise the statutory prerequisite order in which permissions and clearances must be obtained. Green animated arrows indicate active parallel paths.
         </p>
 
         {data && (

@@ -3,6 +3,7 @@ import { requireAuth } from '../middleware/auth';
 import { requireRole } from '../middleware/roleGuard';
 import * as analyticsService from '../services/analyticsService';
 import * as slaService from '../services/slaService';
+import { prisma } from '../lib/prisma';
 
 const router = Router();
 
@@ -51,6 +52,17 @@ router.get('/sla-monitor', async (req, res, next) => {
         sanitizeParam(req.query.department_id)
       )
     );
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/departments', async (_req, res, next) => {
+  try {
+    const depts = await prisma.department.findMany({
+      orderBy: { name: 'asc' },
+    });
+    res.json(depts);
   } catch (err) {
     next(err);
   }

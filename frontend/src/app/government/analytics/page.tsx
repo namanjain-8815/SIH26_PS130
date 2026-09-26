@@ -64,20 +64,27 @@ export default function AnalyticsPage() {
 
   return (
     <div className="p-6 space-y-6 animate-fade-in">
-      <div>
-        <h1 className="text-lg font-bold text-gray-900">Analytics</h1>
-        <p className="text-xs text-gray-500 mt-0.5">
-          Computed from stored application events and status transitions
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <div className="flex items-center gap-2">
+            <h1 className="text-lg font-bold text-gray-900">Scrutiny & Performance Analytics</h1>
+            <span className="text-[10px] font-semibold bg-blue-50 text-blue-700 px-2 py-0.5 rounded border border-blue-200">
+              PROTOTYPE
+            </span>
+          </div>
+          <p className="text-xs text-gray-500 mt-0.5">
+            Computed from stored application events and scrutiny transitions · Demonstration Data
+          </p>
+        </div>
       </div>
 
       {/* KPI cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { label: 'Total Applications', value: analytics.total_applications, sub: 'All time', color: 'text-blue-600 bg-blue-50' },
-          { label: 'Avg Processing Time', value: analytics.average_processing_days != null ? `${analytics.average_processing_days}d` : 'N/A', sub: 'Submitted → Approved', color: 'text-amber-600 bg-amber-50' },
-          { label: 'SLA Breaches', value: analytics.sla.breached, sub: analytics.sla.label, color: 'text-red-600 bg-red-50' },
-          { label: 'SLA On Track', value: analytics.sla.on_track, sub: 'Within configured timeline', color: 'text-green-600 bg-green-50' },
+          { label: 'Total Applications', value: analytics.total_applications, sub: 'All registered proposals', color: 'text-blue-600 bg-blue-50' },
+          { label: 'Avg Scrutiny Duration', value: analytics.average_processing_days != null ? `${analytics.average_processing_days}d` : 'N/A', sub: 'Submitted → Scrutinized', color: 'text-amber-600 bg-amber-50' },
+          { label: 'Time Limit Breaches', value: analytics.sla.breached, sub: analytics.sla.label, color: 'text-red-600 bg-red-50' },
+          { label: 'Within Specified Limit', value: analytics.sla.on_track, sub: 'Compliant with timeline', color: 'text-green-600 bg-green-50' },
         ].map(({ label, value, sub, color }) => (
           <div key={label} className="card p-4">
             <p className={`text-2xl font-bold ${color.split(' ')[0]}`}>{value}</p>
@@ -90,7 +97,7 @@ export default function AnalyticsPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         {/* Applications by status */}
         <div className="card p-5">
-          <h2 className="text-sm font-semibold text-gray-900 mb-4">Applications by Status</h2>
+          <h2 className="text-sm font-semibold text-gray-900 mb-4">Applications by Scrutiny Status</h2>
           <ResponsiveContainer width="100%" height={240}>
             <BarChart data={statusChartData} barSize={28}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
@@ -111,7 +118,7 @@ export default function AnalyticsPage() {
 
         {/* SLA breakdown */}
         <div className="card p-5">
-          <h2 className="text-sm font-semibold text-gray-900 mb-1">Configured SLA Status</h2>
+          <h2 className="text-sm font-semibold text-gray-900 mb-1">Specified Time Limit Status</h2>
           <p className="text-xs text-gray-400 mb-4">{analytics.sla.label}</p>
           <ResponsiveContainer width="100%" height={240}>
             <PieChart>

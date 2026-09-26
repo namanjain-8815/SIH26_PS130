@@ -49,6 +49,23 @@ router.get('/applications/:id/timeline', requireAuth, async (req, res, next) => 
   }
 });
 
+router.post('/applications/:id/coordination-note', requireAuth, async (req, res, next) => {
+  try {
+    const { note, notes, event_type } = req.body as { note?: string; notes?: string; event_type?: string };
+    const content = note || notes || 'Inter-department coordination note recorded';
+    res.status(201).json(
+      await applicationService.recordCoordinationNote(
+        req.params.id,
+        req.user!.id,
+        content,
+        event_type || 'nodal_coordination_note'
+      )
+    );
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.post('/applications/:id/readiness-check', requireAuth, async (req, res, next) => {
   try {
     res.json(await applicationService.runReadinessCheck(req.params.id));

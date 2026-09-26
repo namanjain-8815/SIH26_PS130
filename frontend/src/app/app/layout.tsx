@@ -6,6 +6,7 @@ import { useAuth } from '@/lib/auth-context';
 import { useQuery } from '@tanstack/react-query';
 import { notificationsApi } from '@/lib/api';
 import { cn } from '@/lib/utils';
+import { formatRole } from '@/lib/terminology';
 import {
   LayoutDashboard,
   FolderKanban,
@@ -22,13 +23,13 @@ import {
 } from 'lucide-react';
 
 const NAV = [
-  { href: '/app/dashboard',   label: 'Dashboard',           icon: LayoutDashboard },
-  { href: '/app/projects',    label: 'My Applications',     icon: FolderKanban },
-  { href: '/app/approvals',   label: 'Approvals & Licences',icon: FileText },
-  { href: '/app/documents',   label: 'Documents',           icon: Files },
-  { href: '/app/inspections', label: 'Inspections',         icon: ClipboardCheck },
-  { href: '/app/compliance',  label: 'Compliance Calendar', icon: Calendar },
-  { href: '/app/notifications',label: 'Notifications',      icon: Bell, badge: true },
+  { href: '/app/dashboard',   label: 'Dashboard',                 icon: LayoutDashboard },
+  { href: '/app/projects',    label: 'Investment Proposals',      icon: FolderKanban },
+  { href: '/app/approvals',   label: 'Permissions & Approvals',   icon: FileText },
+  { href: '/app/documents',   label: 'Document Vault',            icon: Files },
+  { href: '/app/inspections', label: 'Site Inspections',          icon: ClipboardCheck },
+  { href: '/app/compliance',  label: 'Compliance & Renewals',     icon: Calendar },
+  { href: '/app/notifications',label: 'Notifications',            icon: Bell, badge: true },
 ];
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
@@ -57,8 +58,13 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             <Building2 className="w-4 h-4 text-white" />
           </div>
           <div className="min-w-0">
-            <p className="text-white text-sm font-semibold leading-none truncate">Udyog Setu</p>
-            <p className="text-gray-500 text-xs mt-0.5">Industrial Approvals</p>
+            <div className="flex items-center gap-1.5">
+              <p className="text-white text-sm font-semibold leading-none truncate">Udyog Setu</p>
+              <span className="text-[9px] bg-primary-500/20 text-primary-300 font-bold px-1 py-0.5 rounded border border-primary-500/30">
+                PROTOTYPE
+              </span>
+            </div>
+            <p className="text-gray-400 text-[11px] mt-1 truncate">Single Window System</p>
           </div>
         </div>
 
@@ -107,7 +113,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-white text-xs font-medium truncate">{user.name}</p>
-                <p className="text-gray-400 text-[11px] truncate">{user.role}</p>
+                <p className="text-primary-300 text-[11px] truncate font-medium">{formatRole(user.role)}</p>
               </div>
               <ChevronRight className="w-3.5 h-3.5 text-gray-500 flex-shrink-0" />
             </div>

@@ -1,5 +1,5 @@
 import { prisma } from '../lib/prisma';
-import { NotFoundError } from '../lib/errors';
+import { NotFoundError, ForbiddenError } from '../lib/errors';
 
 export async function listApplications(projectId: string) {
   return prisma.application.findMany({
@@ -73,6 +73,27 @@ export async function updateApplicationStatus(id: string, status: string, actorI
     });
     if (!app) throw new NotFoundError('Application not found');
 
+    if (actorId && ['APPROVED', 'REJECTED'].includes(status)) {
+      const actor = await tx.user.findUnique({ where: { id: actorId } });
+      if (actor) {
+        if (actor.role === 'NODAL') {
+          throw new ForbiddenError(
+            'MAITRI Nodal Officers provide inter-department facilitation and monitoring; statutory approval decisions must be taken by the Concerned Competent Authority Officer.'
+          );
+        }
+        if (actor.role === 'INSPECTOR') {
+          throw new ForbiddenError(
+            'Designated Inspection Officers record inspection findings; statutory approval decisions must be taken by the Competent Authority Officer.'
+          );
+        }
+        if (actor.role === 'OFFICER' && actor.department_id && app.department_id && actor.department_id !== app.department_id) {
+          throw new ForbiddenError(
+            'Cross-department jurisdiction violation: Only an officer of the Concerned Department / Authority can record approval or rejection.'
+          );
+        }
+      }
+    }
+
     const updateData: any = { status: status as never };
     if (status === 'SUBMITTED' && !app.submitted_at) {
       updateData.submitted_at = new Date();
@@ -110,6 +131,25 @@ export async function getApplicationTimeline(applicationId: string) {
     where: { application_id: applicationId },
     include: { actor: { select: { id: true, name: true, role: true } } },
     orderBy: { timestamp: 'asc' },
+  });
+}
+
+export async function recordCoordinationNote(
+  applicationId: string,
+  actorId: string,
+  notes: string,
+  eventType: string = 'nodal_coordination_note'
+) {
+  const application = await prisma.application.findUnique({ where: { id: applicationId } });
+  if (!application) throw new NotFoundError('Application not found');
+
+  return prisma.applicationEvent.create({
+    data: {
+      application_id: applicationId,
+      actor_id: actorId,
+      event_type: eventType,
+      notes,
+    },
   });
 }
 

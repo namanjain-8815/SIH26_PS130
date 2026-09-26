@@ -4,16 +4,17 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { cn } from '@/lib/utils';
+import { formatRole } from '@/lib/terminology';
 import {
   LayoutDashboard, ListTodo, BarChart3, Clock, LogOut,
   Building2, ChevronRight, AlertTriangle,
 } from 'lucide-react';
 
 const NAV = [
-  { href: '/government/work-queue',  label: 'Work Queue',    icon: ListTodo },
-  { href: '/government/sla-monitor', label: 'SLA Monitor',   icon: Clock },
-  { href: '/government/bottlenecks', label: 'Bottlenecks',   icon: AlertTriangle },
-  { href: '/government/analytics',   label: 'Analytics',     icon: BarChart3 },
+  { href: '/government/work-queue',  label: 'Competent Authority Queue', icon: ListTodo },
+  { href: '/government/sla-monitor', label: 'Specified Time Limits',    icon: Clock },
+  { href: '/government/bottlenecks', label: 'Bottlenecks & Delays',     icon: AlertTriangle },
+  { href: '/government/analytics',   label: 'Scrutiny Analytics',       icon: BarChart3 },
 ];
 
 export default function GovernmentLayout({ children }: { children: React.ReactNode }) {
@@ -31,8 +32,15 @@ export default function GovernmentLayout({ children }: { children: React.ReactNo
             <Building2 className="w-4 h-4 text-white" />
           </div>
           <div className="min-w-0">
-            <p className="text-white text-sm font-semibold leading-none truncate">Govt Officer</p>
-            <p className="text-gray-500 text-xs mt-0.5">Maharashtra Govt</p>
+            <div className="flex items-center gap-1.5">
+              <p className="text-white text-sm font-semibold leading-none truncate">Single Window</p>
+              <span className="text-[9px] bg-blue-500/20 text-blue-300 font-bold px-1 py-0.5 rounded border border-blue-500/30">
+                PROTOTYPE
+              </span>
+            </div>
+            <p className="text-gray-400 text-[11px] mt-1 truncate">
+              {user?.department?.name ?? 'Concerned Authority Portal'}
+            </p>
           </div>
         </div>
 
@@ -63,9 +71,14 @@ export default function GovernmentLayout({ children }: { children: React.ReactNo
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-white text-xs font-medium truncate">{user.name}</p>
-                <p className="text-gray-400 text-[11px] truncate">{user.role}</p>
+                <p className="text-blue-300 text-[11px] truncate font-medium">
+                  {formatRole(user.role)}
+                </p>
+                {user.department && (
+                  <p className="text-gray-400 text-[10px] truncate">{user.department.name}</p>
+                )}
               </div>
-              <ChevronRight className="w-3.5 h-3.5 text-gray-500" />
+              <ChevronRight className="w-3.5 h-3.5 text-gray-500 flex-shrink-0" />
             </div>
           </div>
         )}

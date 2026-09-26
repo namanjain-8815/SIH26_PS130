@@ -4,15 +4,16 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { cn } from '@/lib/utils';
+import { formatRole } from '@/lib/terminology';
 import { FileText, GitMerge, Clock, Gift, ScrollText, LogOut, Building2, ShieldCheck } from 'lucide-react';
 
 const NAV = [
-  { href: '/admin/approval-types',  label: 'Approval Types',   icon: FileText },
-  { href: '/admin/rules',           label: 'Applicability Rules',icon: GitMerge },
-  { href: '/admin/dependencies',    label: 'Dependencies',      icon: GitMerge },
-  { href: '/admin/sla-policies',    label: 'SLA Policies',      icon: Clock },
-  { href: '/admin/incentive-schemes',label: 'Incentive Schemes',icon: Gift },
-  { href: '/admin/audit-log',       label: 'Audit Log',         icon: ScrollText },
+  { href: '/admin/approval-types',  label: 'Permissions Catalogue',      icon: FileText },
+  { href: '/admin/rules',           label: 'Applicability & Eligibility',icon: GitMerge },
+  { href: '/admin/dependencies',    label: 'Permission Dependencies',    icon: GitMerge },
+  { href: '/admin/sla-policies',    label: 'Specified Time Policies',   icon: Clock },
+  { href: '/admin/incentive-schemes',label: 'Incentive Schemes',         icon: Gift },
+  { href: '/admin/audit-log',       label: 'Audit Trail & Logs',         icon: ScrollText },
 ];
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -30,8 +31,13 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             <ShieldCheck className="w-4 h-4 text-white" />
           </div>
           <div className="min-w-0">
-            <p className="text-white text-sm font-semibold leading-none truncate">Admin Panel</p>
-            <p className="text-gray-500 text-xs mt-0.5">Platform Configuration</p>
+            <div className="flex items-center gap-1.5">
+              <p className="text-white text-sm font-semibold leading-none truncate">System Admin</p>
+              <span className="text-[9px] bg-purple-500/20 text-purple-300 font-bold px-1 py-0.5 rounded border border-purple-500/30">
+                PROTOTYPE
+              </span>
+            </div>
+            <p className="text-gray-400 text-[11px] mt-1 truncate">Platform Configuration</p>
           </div>
         </div>
 
@@ -62,7 +68,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-white text-xs font-medium truncate">{user.name}</p>
-                <p className="text-gray-400 text-[11px]">ADMIN</p>
+                <p className="text-purple-300 text-[11px] font-medium">{formatRole(user.role)}</p>
               </div>
             </div>
           </div>

@@ -117,7 +117,7 @@ export default function DocumentsPage() {
         <div>
           <h1 className="text-lg font-bold text-gray-900">Document Vault</h1>
           <p className="text-xs text-gray-500 mt-0.5">
-            All project documents — uploaded once, reused across multiple applications
+            All industrial undertaking documents — uploaded once, reused across multiple permission applications
           </p>
         </div>
         <div className="flex items-center gap-2">

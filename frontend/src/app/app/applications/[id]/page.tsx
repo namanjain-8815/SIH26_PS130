@@ -14,6 +14,7 @@ import {
 import { StatusBadge, PriorityBadge } from '@/components/ui/StatusBadge';
 import { CardSkeleton, EmptyState, ErrorState } from '@/components/ui/States';
 import { formatDate, formatDateTime } from '@/lib/utils';
+import { formatRole } from '@/lib/terminology';
 import type {
   ApplicationDetail,
   DocumentItem,
@@ -277,7 +278,7 @@ export default function ApplicationWorkspacePage() {
             <button
               onClick={() => router.push('/app/approvals')}
               className="p-1.5 rounded-lg border border-gray-200 text-gray-500 hover:text-gray-900 hover:bg-gray-100 transition-colors"
-              title="Back to Approvals"
+              title="Back to Permissions & Approvals"
             >
               <ArrowLeft className="w-4 h-4" />
             </button>
@@ -1116,7 +1117,7 @@ export default function ApplicationWorkspacePage() {
                         {ev.notes && <p className="text-xs text-gray-700 font-medium">{ev.notes}</p>}
                         {ev.actor && (
                           <p className="text-[11px] text-gray-400">
-                            By {ev.actor.name} ({ev.actor.role})
+                            By {ev.actor.name} ({formatRole(ev.actor.role)})
                           </p>
                         )}
                       </div>

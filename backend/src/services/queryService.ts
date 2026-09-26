@@ -133,6 +133,15 @@ export async function updateQueryStatus(
           },
         });
       }
+    } else if (status === 'ESCALATED') {
+      await tx.applicationEvent.create({
+        data: {
+          application_id: query.application_id,
+          actor_id: actorId,
+          event_type: 'query_escalated_to_empowered_committee',
+          notes: `Unresolved query escalated to Empowered Committee: "${query.subject}"`,
+        },
+      });
     }
     return updated;
   });

@@ -17,9 +17,14 @@ export default function BottlenecksPage() {
   return (
     <div className="p-6 space-y-5 animate-fade-in">
       <div>
-        <h1 className="text-lg font-bold text-gray-900">Process Bottlenecks</h1>
+        <div className="flex items-center gap-2">
+          <h1 className="text-lg font-bold text-gray-900">Process Bottlenecks & Delay Intelligence</h1>
+          <span className="text-[10px] font-semibold bg-blue-50 text-blue-700 px-2 py-0.5 rounded border border-blue-200">
+            PROTOTYPE
+          </span>
+        </div>
         <p className="text-xs text-gray-500 mt-0.5">
-          {bn?.label ?? 'Derived from stored application events and status transitions'}
+          {bn?.label ?? 'Derived from stored application events and status transitions · Demonstration Analytics'}
         </p>
       </div>
 

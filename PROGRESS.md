@@ -1,5 +1,115 @@
 # Project Progress
 
+## Phase 5 Government Processing with Authority-Aware Permissions (COMPLETED ✅)
+- **1. Department Catalogue & Dynamic Authority Scoping**:
+  - Backend `GET /api/government/departments` in [backend/src/routes/government.ts](file:///c:/Users/naman/OneDrive/Desktop/SIH26_PS130/backend/src/routes/government.ts): Returns all concerned authorities (MIDC, MPCB, Discom, Fire, Labour, FSSAI) directly from PostgreSQL.
+  - Added `governmentApi.departments()` in [frontend/src/lib/api.ts](file:///c:/Users/naman/OneDrive/Desktop/SIH26_PS130/frontend/src/lib/api.ts).
+  - Enhanced `getWorkQueue` in [backend/src/services/analyticsService.ts](file:///c:/Users/naman/OneDrive/Desktop/SIH26_PS130/backend/src/services/analyticsService.ts) to return `department_id: app.department_id` on each item.
+  - Additive Token & Request hydration: Added `department_id?: string | null` to `TokenPayload` in [backend/src/lib/jwt.ts](file:///c:/Users/naman/OneDrive/Desktop/SIH26_PS130/backend/src/lib/jwt.ts), `Express.Request` user type in [backend/src/types/express.d.ts](file:///c:/Users/naman/OneDrive/Desktop/SIH26_PS130/backend/src/types/express.d.ts), and auth middleware in [backend/src/middleware/auth.ts](file:///c:/Users/naman/OneDrive/Desktop/SIH26_PS130/backend/src/middleware/auth.ts).
+
+- **2. Authority-Aware Permissions & Jurisdiction Guardrails**:
+  - Enhanced `updateApplicationStatus` in [backend/src/services/applicationService.ts](file:///c:/Users/naman/OneDrive/Desktop/SIH26_PS130/backend/src/services/applicationService.ts):
+    - **Cross-Department Protection**: Competent Authority Officers (`OFFICER`) can only approve or reject applications within their assigned department (`actor.department_id === app.department_id`), returning `403 Forbidden` with a descriptive message on cross-department attempts.
+    - **MAITRI Nodal Agency Boundaries**: Nodal officers (`NODAL`) attempting to record statutory approval/rejection decisions receive `403 Forbidden` (*"MAITRI Nodal Officers provide inter-department facilitation and monitoring; statutory approval decisions must be taken by the Concerned Competent Authority Officer."*).
+    - **Designated Inspection Officers (`INSPECTOR`)**: Approval/rejection attempts receive `403 Forbidden` (*"Designated Inspection Officers record inspection findings; statutory approval decisions must be taken by the Competent Authority Officer."*).
+  - Added inter-department coordination notes:
+    - Route `POST /api/applications/:id/coordination-note` in [backend/src/routes/applications.ts](file:///c:/Users/naman/OneDrive/Desktop/SIH26_PS130/backend/src/routes/applications.ts) calling `recordCoordinationNote` in [backend/src/services/applicationService.ts](file:///c:/Users/naman/OneDrive/Desktop/SIH26_PS130/backend/src/services/applicationService.ts).
+    - Persists `nodal_coordination_note` and `escalated_to_empowered_committee` events in `ApplicationEvent` timeline.
+  - Statutory Escalation Protocol:
+    - Enhanced `updateQueryStatus` in [backend/src/services/queryService.ts](file:///c:/Users/naman/OneDrive/Desktop/SIH26_PS130/backend/src/services/queryService.ts) to handle `status: 'ESCALATED'`, creating a `query_escalated_to_empowered_committee` audit event.
+    - Added `queriesApi.escalate(queryId)` in [frontend/src/lib/api.ts](file:///c:/Users/naman/OneDrive/Desktop/SIH26_PS130/frontend/src/lib/api.ts).
+
+- **3. Competent Authority Work Queue UI Personalization ([frontend/src/app/government/work-queue/page.tsx](file:///c:/Users/naman/OneDrive/Desktop/SIH26_PS130/frontend/src/app/government/work-queue/page.tsx))**:
+  - **Dynamic Jurisdiction Scoping**:
+    - For `OFFICER`: Automatically filters to their department with visual badge: `Concerned Authority: {name}` with a `Jurisdiction Scoped` lock tag.
+    - For `NODAL` / `ADMIN`: Dropdown populated with all concerned authorities to facilitate cross-department monitoring or focus on a specific authority.
+  - Table columns display Concerned Authority prominently under each permission name.
+  - **Decision Modals**:
+    - **Record Decision — Grant Permission**: Captures Clearance Reference Number and Conditions of Approval / Statutory Reasons.
+    - **Record Decision — Rejection**: Enforces mandatory entry of statutory grounds and non-compliances per MAITRI Rules.
+    - **Cross-Department Notice**: Renders read-only jurisdiction warning banner when viewing an outside application.
+  - **MAITRI Nodal Agency Panel**:
+    - Distinctive coordination view with 4 actions: *Inter-Department Coordination Note*, *Facilitate Query* (prefixed with `[MAITRI Facilitation]`), *Escalate to Empowered Committee*, and *Coordinate Inspection*.
+    - Disabled decision buttons indicating statutory decision authority belongs to the Concerned Department.
+  - **Query Escalation Control**: Added "Escalate to Committee" button for open queries in the application detail drawer.
+
+- **Phase 5 Verification & Test Results**:
+  - **Phase 5 Integration Suite (`backend/src/tests/integration/phase5.integration.test.ts`)**: 8/8 tests passed against live Supabase data:
+    1. Department catalogue retrieval (`GET /api/government/departments`).
+    2. Competent Authority Officer department-scoped work queue.
+    3. Competent Authority Officer of MIDC approves MIDC application.
+    4. Cross-department protection: MPCB officer rejected with 403 on MIDC application.
+    5. MAITRI Nodal Officer rejected with 403 when attempting statutory approval.
+    6. Designated Inspection Officer rejected with 403 when attempting statutory approval.
+    7. MAITRI Nodal Officer records coordination note in application timeline.
+    8. Query escalation to Empowered Committee updates status and logs event.
+  - **Full Backend Test Suite**: 47/47 tests passed across 9 suites (100% pass rate).
+  - **Frontend Production Build**: `npm --prefix frontend run build` compiled successfully with zero errors across all 23 routes.
+  - **Database Schema**: Zero schema migrations required; complete backward compatibility maintained.
+
+## Phase 4 Government Terminology & Role Personalization (COMPLETED ✅)
+- **1. Centralized Presentation Mapping (`frontend/src/lib/terminology.ts`)**:
+  - Implemented `ROLE_LABELS` and `ROLE_META` mapping internal enum values to official Maharashtra Single Window (MAITRI) roles:
+    - `ENTREPRENEUR` → **Applicant / Investor**
+    - `MANAGER` → **Authorized Representative**
+    - `OFFICER` → **Competent Authority Officer**
+    - `NODAL` → **MAITRI Nodal Officer**
+    - `INSPECTOR` → **Designated Inspection Officer**
+    - `ADMIN` → **System Administrator**
+  - Added `formatRole(role, departmentName)` producing department-aware descriptions (e.g. *Competent Authority Officer · Maharashtra Pollution Control Board (MPCB)*).
+  - Added `TERMS` dictionary for standardized UI vocabulary: *Industrial Undertaking*, *Investment Proposal*, *Permission / Approval*, *Specified Time Limit*, *Configured Service Timeline*, *Concerned Department / Authority*, *Scrutiny & Decision*.
+
+- **2. Additive Backend User & Department Hydration**:
+  - Enhanced [backend/src/services/authService.ts](file:///c:/Users/naman/OneDrive/Desktop/SIH26_PS130/backend/src/services/authService.ts): Added `{ include: { department: true } }` in `login` and `getCurrentUser` queries using existing `RELATION_MAP.User.department` in `supabaseDb.ts`.
+  - Zero database schema modifications: preserved internal `Role` enums and API contracts while dynamically delivering department context.
+  - Extended [frontend/src/lib/auth-context.tsx](file:///c:/Users/naman/OneDrive/Desktop/SIH26_PS130/frontend/src/lib/auth-context.tsx) `AuthUser` interface to expose hydrated `department: { id: string; name: string } | null`.
+
+- **3. Login & Portal Layouts Personalization**:
+  - Demo login screen ([frontend/src/app/login/page.tsx](file:///c:/Users/naman/OneDrive/Desktop/SIH26_PS130/frontend/src/app/login/page.tsx)):
+    - All 7 demo quick-login buttons updated with official role titles and department contexts (MIDC, MPCB, Discom).
+    - Added visible **PROTOTYPE** badge and SIH demonstration disclaimer ("SIH 2026 Problem Statement 26130 · Solution Prototype. Not an official Government of Maharashtra service.").
+  - Shared Government Shell ([frontend/src/app/government/layout.tsx](file:///c:/Users/naman/OneDrive/Desktop/SIH26_PS130/frontend/src/app/government/layout.tsx)):
+    - Navigation updated: *Competent Authority Queue*, *Specified Time Limits*, *Bottlenecks & Delays*, *Scrutiny Analytics*.
+    - Header displays dynamic **Concerned Authority** badge based on officer's department.
+    - Bottom user chip renders official role formatted with department context using `formatRole`.
+  - Applicant Portal Layout ([frontend/src/app/app/layout.tsx](file:///c:/Users/naman/OneDrive/Desktop/SIH26_PS130/frontend/src/app/app/layout.tsx)):
+    - Navigation updated: *Investment Proposals*, *Permissions & Approvals*, *Compliance & Renewals*.
+    - Added **PROTOTYPE** indicator next to Udyog Setu branding.
+  - Admin Portal Layout ([frontend/src/app/admin/layout.tsx](file:///c:/Users/naman/OneDrive/Desktop/SIH26_PS130/frontend/src/app/admin/layout.tsx)):
+    - Navigation updated: *Permissions Catalogue*, *Applicability & Eligibility*, *Permission Dependencies*, *Specified Time Policies*, *Audit Trail & Logs*.
+    - User chip labeled **System Administrator**.
+
+- **4. Government Processing & Scrutiny Workspaces**:
+  - Competent Authority Work Queue ([frontend/src/app/government/work-queue/page.tsx](file:///c:/Users/naman/OneDrive/Desktop/SIH26_PS130/frontend/src/app/government/work-queue/page.tsx)):
+    - Renamed to **Competent Authority Work Queue** with dynamic Concerned Authority badge and statutory scrutiny subtitle.
+    - Table columns updated: *Application Ref*, *Permission / Approval*, *Applicant Entity*, *Specified Time Limit*, *Actions*.
+    - Detail drawer updated: *Applicant Entity*, *Project / Investment Proposal*, *Concerned Department / Authority*, *Specified Time Limit Status*.
+    - Actions aligned to official decision semantics: **Start / Resume Scrutiny**, **Raise Query / Seek Info**, **Schedule Site Inspection**, **Approve Permission**, **Reject Application (Record Decision)**.
+    - Query modal updated with official MAITRI scrutiny guidance ("Under the Maharashtra Single Window clearance framework, queries must be raised promptly...").
+  - Specified Time Limit Monitor ([frontend/src/app/government/sla-monitor/page.tsx](file:///c:/Users/naman/OneDrive/Desktop/SIH26_PS130/frontend/src/app/government/sla-monitor/page.tsx)):
+    - Renamed with statutory time limit subtitle and prototype indicator.
+  - Scrutiny & Performance Analytics ([frontend/src/app/government/analytics/page.tsx](file:///c:/Users/naman/OneDrive/Desktop/SIH26_PS130/frontend/src/app/government/analytics/page.tsx)):
+    - Renamed with official KPI cards and time limit metrics.
+  - Bottlenecks & Delays ([frontend/src/app/government/bottlenecks/page.tsx](file:///c:/Users/naman/OneDrive/Desktop/SIH26_PS130/frontend/src/app/government/bottlenecks/page.tsx)):
+    - Renamed to **Process Bottlenecks & Delay Intelligence**.
+
+- **5. Applicant-Side Screens & Admin Catalogue Alignment**:
+  - Dashboard ([frontend/src/app/app/dashboard/page.tsx](file:///c:/Users/naman/OneDrive/Desktop/SIH26_PS130/frontend/src/app/app/dashboard/page.tsx)): Updated to *Permissions & Approvals*, *Recent Permission Applications*, *Investment proposal status*.
+  - Permissions & Approvals ([frontend/src/app/app/approvals/page.tsx](file:///c:/Users/naman/OneDrive/Desktop/SIH26_PS130/frontend/src/app/app/approvals/page.tsx)): Renamed to **Permissions, Approvals & Registrations**, *Application Reference Number*, *Concerned Department / Authority*.
+  - Dependency Map ([frontend/src/app/app/projects/[id]/dependency-graph/page.tsx](file:///c:/Users/naman/OneDrive/Desktop/SIH26_PS130/frontend/src/app/app/projects/[id]/dependency-graph/page.tsx)): Renamed to **Permissions & Approvals Dependency Map**.
+  - Application Workspace ([frontend/src/app/app/applications/[id]/page.tsx](file:///c:/Users/naman/OneDrive/Desktop/SIH26_PS130/frontend/src/app/app/applications/[id]/page.tsx)): Formatted actor roles in timeline (`By {ev.actor.name} ({formatRole(ev.actor.role)})`), updated tooltips and copy.
+  - Projects ([frontend/src/app/app/projects/page.tsx](file:///c:/Users/naman/OneDrive/Desktop/SIH26_PS130/frontend/src/app/app/projects/page.tsx)): Renamed to **Project / Investment Proposals** and industrial undertakings.
+  - Compliance ([frontend/src/app/app/compliance/page.tsx](file:///c:/Users/naman/OneDrive/Desktop/SIH26_PS130/frontend/src/app/app/compliance/page.tsx)): Renamed to **Compliance & Renewals**.
+  - Documents ([frontend/src/app/app/documents/page.tsx](file:///c:/Users/naman/OneDrive/Desktop/SIH26_PS130/frontend/src/app/app/documents/page.tsx)): Subtitle updated for permission applications.
+  - Inspections ([frontend/src/app/app/inspections/page.tsx](file:///c:/Users/naman/OneDrive/Desktop/SIH26_PS130/frontend/src/app/app/inspections/page.tsx)): Subtitle and cards updated with Designated Inspection Officer context.
+  - Settings ([frontend/src/app/app/settings/page.tsx](file:///c:/Users/naman/OneDrive/Desktop/SIH26_PS130/frontend/src/app/app/settings/page.tsx)): Profile role badge uses `formatRole`.
+  - Admin Catalogue & Configuration pages ([approval-types](file:///c:/Users/naman/OneDrive/Desktop/SIH26_PS130/frontend/src/app/admin/approval-types/page.tsx), [rules](file:///c:/Users/naman/OneDrive/Desktop/SIH26_PS130/frontend/src/app/admin/rules/page.tsx), [dependencies](file:///c:/Users/naman/OneDrive/Desktop/SIH26_PS130/frontend/src/app/admin/dependencies/page.tsx), [sla-policies](file:///c:/Users/naman/OneDrive/Desktop/SIH26_PS130/frontend/src/app/admin/sla-policies/page.tsx), [audit-log](file:///c:/Users/naman/OneDrive/Desktop/SIH26_PS130/frontend/src/app/admin/audit-log/page.tsx)): Updated page titles, table columns, and formatted actor roles.
+
+- **Phase 4 Verification & Test Results**:
+  - **Full Backend Test Suite**: 39/39 tests passed across 8 suites (100% pass rate).
+  - **Frontend Production Build**: `npm --prefix frontend run build` compiled successfully with zero errors across all 23 routes.
+  - **Database Schema**: Zero schema migrations required; complete backward compatibility maintained.
+
 ## Phase 3 Core Application Workflows (COMPLETED ✅)
 - **1. Application Detail / Workspace & Real Status Transitions**:
   - Created dedicated Application Workspace page at [frontend/src/app/app/applications/[id]/page.tsx](file:///c:/Users/naman/OneDrive/Desktop/SIH26_PS130/frontend/src/app/app/applications/[id]/page.tsx) with 6 interactive tabs: *Overview*, *Documents*, *Readiness Check*, *Queries*, *Site Inspection*, and *Timeline*.

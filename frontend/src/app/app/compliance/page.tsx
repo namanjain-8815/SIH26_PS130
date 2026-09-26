@@ -43,9 +43,9 @@ export default function CompliancePage() {
     <div className="p-6 space-y-5 animate-fade-in">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-lg font-bold text-gray-900">Compliance Calendar</h1>
+          <h1 className="text-lg font-bold text-gray-900">Compliance & Renewals</h1>
           <p className="text-xs text-gray-500 mt-0.5">
-            Renewal dates and periodic compliance requirements for your project
+            Renewal dates and periodic post-approval compliance obligations for your industrial undertaking
           </p>
         </div>
         <button className="btn-secondary text-xs py-1.5">

@@ -78,6 +78,7 @@ export async function getWorkQueue(filters: {
     org_name: app.project_approval?.project?.organization?.legal_name ?? 'Unknown Organization',
     project_name: app.project_approval?.project?.name ?? 'Unknown Project',
     district: app.project_approval?.project?.district ?? 'Unknown District',
+    department_id: app.department_id,
     department_name: app.department?.name ?? 'Unknown Department',
     sla_status: app.sla_instance?.status ?? null,
     sla_due_date: app.sla_instance?.due_date ?? null,

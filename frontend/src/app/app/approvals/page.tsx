@@ -65,7 +65,7 @@ export default function ApprovalsPage() {
         {/* Header */}
         <div className="px-5 pt-5 pb-3 border-b border-gray-100">
           <div className="flex items-center justify-between mb-3">
-            <h1 className="text-lg font-bold text-gray-900">Approvals & Licences</h1>
+            <h1 className="text-lg font-bold text-gray-900">Permissions, Approvals & Registrations</h1>
             <div className="flex items-center gap-2">
               <button
                 onClick={() => runAnalysis.mutate()}
@@ -106,8 +106,8 @@ export default function ApprovalsPage() {
           )}
           {!isLoading && filtered.length === 0 && (
             <EmptyState
-              title="No approvals"
-              description="Run regulatory analysis to identify applicable approvals for this project."
+              title="No permissions or approvals"
+              description="Run regulatory analysis to identify applicable permissions, approvals & registrations for this investment proposal."
               action={
                 <button onClick={() => runAnalysis.mutate()} className="btn-primary text-xs py-1.5">
                   <Play className="w-3.5 h-3.5" /> Run Analysis
@@ -235,11 +235,11 @@ function ApprovalDetail({ detail }: { detail: ProjectApprovalDetail }) {
           <div>
             <div className="grid grid-cols-2 gap-2 text-xs mb-3">
               <div>
-                <p className="text-gray-400">App Number</p>
+                <p className="text-gray-400">Application Reference Number</p>
                 <p className="font-mono font-medium text-gray-800">{detail.application.application_number}</p>
               </div>
               <div>
-                <p className="text-gray-400">Department</p>
+                <p className="text-gray-400">Concerned Department / Authority</p>
                 <p className="font-medium text-gray-800">{detail.application.department?.name ?? '—'}</p>
               </div>
               <div>

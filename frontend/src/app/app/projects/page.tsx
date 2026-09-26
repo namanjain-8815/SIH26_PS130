@@ -24,9 +24,9 @@ export default function ProjectsPage() {
     <div className="p-6 space-y-5 animate-fade-in">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-lg font-bold text-gray-900">My Applications</h1>
+          <h1 className="text-lg font-bold text-gray-900">Project / Investment Proposals</h1>
           <p className="text-xs text-gray-500 mt-0.5">
-            All industrial projects registered under your organisation
+            All industrial undertakings & investment proposals registered under your applicant entity
           </p>
         </div>
       </div>
@@ -42,8 +42,8 @@ export default function ProjectsPage() {
       {!isLoading && projects.length === 0 && (
         <EmptyState
           icon={<FolderKanban className="w-10 h-10" />}
-          title="No projects yet"
-          description="Register your industrial project to get a personalised approval roadmap."
+          title="No investment proposals yet"
+          description="Register your industrial undertaking to get a personalised permissions and approvals roadmap."
         />
       )}
 

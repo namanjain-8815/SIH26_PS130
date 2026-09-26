@@ -33,26 +33,33 @@ export default function SLAMonitorPage() {
 
   return (
     <div className="p-6 space-y-5 animate-fade-in">
-      <div>
-        <h1 className="text-lg font-bold text-gray-900">SLA Monitor</h1>
-        <p className="text-xs text-gray-500 mt-0.5">
-          Configured service timeline tracking — not legally guaranteed commitments
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <div className="flex items-center gap-2">
+            <h1 className="text-lg font-bold text-gray-900">Specified Time Limit Monitor</h1>
+            <span className="text-[10px] font-semibold bg-blue-50 text-blue-700 px-2 py-0.5 rounded border border-blue-200">
+              PROTOTYPE
+            </span>
+          </div>
+          <p className="text-xs text-gray-500 mt-0.5">
+            Configured service timeline tracking & statutory specified time limits under MAITRI Rules · Demonstration Data
+          </p>
+        </div>
       </div>
 
       {/* Stats */}
       <div className="grid grid-cols-3 gap-4">
         <div className="card p-4 text-center border-l-4 border-l-red-500">
           <p className="text-3xl font-bold text-red-600">{breached}</p>
-          <p className="text-xs text-gray-500 mt-1">SLA Breached</p>
+          <p className="text-xs text-gray-500 mt-1">Time Limit Breached</p>
         </div>
         <div className="card p-4 text-center border-l-4 border-l-orange-400">
           <p className="text-3xl font-bold text-orange-600">{atRisk}</p>
-          <p className="text-xs text-gray-500 mt-1">At Risk</p>
+          <p className="text-xs text-gray-500 mt-1">At Risk (&lt; 25% Remaining)</p>
         </div>
         <div className="card p-4 text-center border-l-4 border-l-green-500">
           <p className="text-3xl font-bold text-green-600">{onTrack}</p>
-          <p className="text-xs text-gray-500 mt-1">On Track</p>
+          <p className="text-xs text-gray-500 mt-1">Within Specified Limit</p>
         </div>
       </div>
 
@@ -60,7 +67,7 @@ export default function SLAMonitorPage() {
         <table className="w-full">
           <thead className="border-b border-gray-100">
             <tr>
-              {['Application', 'Approval', 'Organisation', 'Dept', 'SLA Status', 'Due Date', 'Overdue'].map(h => (
+              {['Application Ref', 'Permission / Approval', 'Applicant Entity', 'Concerned Authority', 'Specified Limit Status', 'Due Date', 'Overdue'].map(h => (
                 <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">{h}</th>
               ))}
             </tr>

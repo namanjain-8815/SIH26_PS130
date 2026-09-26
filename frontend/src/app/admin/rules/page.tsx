@@ -26,9 +26,14 @@ export default function RulesPage() {
   return (
     <div className="p-6 space-y-5 animate-fade-in">
       <div>
-        <h1 className="text-lg font-bold text-gray-900">Applicability Rules</h1>
+        <div className="flex items-center gap-2">
+          <h1 className="text-lg font-bold text-gray-900">Applicability & Eligibility Rules</h1>
+          <span className="text-[10px] font-semibold bg-purple-50 text-purple-700 px-2 py-0.5 rounded border border-purple-200">
+            PROTOTYPE
+          </span>
+        </div>
         <p className="text-xs text-gray-500 mt-0.5">
-          Data-driven JSON rule conditions that determine which approvals apply to a project
+          Data-driven JSON rule conditions determining applicable statutory permissions for an investment proposal · Demonstration Rules
         </p>
       </div>
 
@@ -36,7 +41,7 @@ export default function RulesPage() {
         <table className="w-full">
           <thead className="border-b border-gray-100">
             <tr>
-              {['Approval Type', 'Jurisdiction', 'Sector', 'Status', 'Effective From', 'Effective To'].map(h => (
+              {['Permission / Approval Type', 'Jurisdiction', 'Sector', 'Status', 'Effective From', 'Effective To'].map(h => (
                 <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">{h}</th>
               ))}
             </tr>

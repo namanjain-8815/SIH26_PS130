@@ -96,6 +96,8 @@ export const applicationsApi = {
     api.post(`/applications/${id}/documents`, { document_id }),
   detachDocument: (id: string, document_id: string) =>
     api.delete(`/applications/${id}/documents/${document_id}`),
+  recordCoordinationNote: (id: string, body: { note: string; event_type?: string }) =>
+    api.post(`/applications/${id}/coordination-note`, body),
   create: (project_approval_id: string, department_id?: string) =>
     api.post<{ id: string; application_number: string }>('/applications', { project_approval_id, department_id }),
 };
@@ -109,6 +111,8 @@ export const queriesApi = {
     api.post(`/queries/${queryId}/respond`, { response_text }),
   updateStatus: (queryId: string, status: string) =>
     api.patch(`/queries/${queryId}/status`, { status }),
+  escalate: (queryId: string) =>
+    api.patch(`/queries/${queryId}/status`, { status: 'ESCALATED' }),
 };
 
 // Inspections
@@ -139,6 +143,8 @@ export const notificationsApi = {
 
 // Government
 export const governmentApi = {
+  departments: () =>
+    api.get<Array<{ id: string; name: string; state: string; district: string }>>('/government/departments'),
   workQueue: (filters?: { department_id?: string; status?: string; priority?: string; district?: string }) => {
     const params = new URLSearchParams();
     if (filters) {
