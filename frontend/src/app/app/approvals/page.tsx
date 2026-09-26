@@ -16,7 +16,9 @@ import {
   RefreshCw,
   FileText,
 } from 'lucide-react';
-import type { ProjectApproval } from '@/types';
+import type { ProjectApproval as BaseProjectApproval } from '@/types';
+
+type ProjectApproval = BaseProjectApproval & { priority?: string };
 import type { ProjectApprovalDetail } from '@/types/api';
 
 const DEMO_PROJECT_ID = 'proj-abc-foods-001';
@@ -165,7 +167,7 @@ function ApprovalRow({ approval, selected, onClick }: { approval: ProjectApprova
             <p className="text-xs text-red-600 mt-1 truncate">⚠ {approval.blocked_reason}</p>
           )}
           <div className="flex items-center gap-2 mt-1.5">
-            <PriorityBadge priority={approval.priority ?? 'MEDIUM'} />
+            <PriorityBadge priority={(approval as ProjectApproval & { priority?: string }).priority ?? 'MEDIUM'} />
             {approval.due_date && (
               <span className="text-xs text-gray-400">Due {formatDate(approval.due_date)}</span>
             )}
