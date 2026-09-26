@@ -32,7 +32,7 @@ router.get('/inspections', requireAuth, async (req, res, next) => {
 
 router.patch('/inspections/:id', requireAuth, async (req, res, next) => {
   try {
-    res.json(await inspectionService.updateInspection(req.params.id, req.body));
+    res.json(await inspectionService.updateInspection(req.params.id, req.user!.id, req.body));
   } catch (err) {
     next(err);
   }

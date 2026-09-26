@@ -1,5 +1,5 @@
 import { prisma } from '../lib/prisma';
-import { NotFoundError, NotImplementedError } from '../lib/errors';
+import { NotFoundError } from '../lib/errors';
 
 export async function listApprovalTypes() {
   return prisma.approvalType.findMany({ where: { active: true }, orderBy: { name: 'asc' } });
@@ -18,15 +18,187 @@ export async function listProjectApprovals(projectId: string) {
   return prisma.projectApproval.findMany({
     where: { project_id: projectId },
     include: { approval_type: true, application: true },
+    orderBy: [{ status: 'asc' }, { priority: 'desc' }],
   });
 }
 
 /**
- * TODO (plan §14): assemble the ten-question approval detail view — what is
- * this, why is it required, who issues it, when to apply, required
- * documents, prerequisite/downstream approvals, current status, time
- * remaining, next action.
+ * GET /api/project-approvals/:id
+ *
+ * The "ten-question" approval detail view:
+ *   1. What is this approval?
+ *   2. Why is it required for this project?
+ *   3. Who issues it?
+ *   4. What documents are needed?
+ *   5. What are the prerequisite approvals?
+ *   6. What approvals does this unblock (downstream)?
+ *   7. What is the current status?
+ *   8. What is the SLA / time remaining?
+ *   9. Is there an active application? What is its state?
+ *  10. What is the recommended next action?
+ *
+ * (IMPLEMENTATION_PLAN.md §14)
  */
-export async function getProjectApprovalDetail(_projectApprovalId: string) {
-  throw new NotImplementedError('getProjectApprovalDetail: build per IMPLEMENTATION_PLAN.md §14');
+export async function getProjectApprovalDetail(projectApprovalId: string) {
+  const pa = await prisma.projectApproval.findUnique({
+    where: { id: projectApprovalId },
+    include: {
+      approval_type: {
+        include: {
+          document_requirements: true,
+          sla_policies: true,
+          prerequisite_for: {
+            include: { dependent_approval: true },
+          },
+          dependent_on: {
+            include: { prerequisite_approval: true },
+          },
+        },
+      },
+      project: {
+        include: {
+          project_approvals: { include: { approval_type: true } },
+        },
+      },
+      application: {
+        include: {
+          department: true,
+          application_documents: { include: { document: true } },
+          events: { orderBy: { timestamp: 'asc' } },
+          queries: { include: { responses: true } },
+          inspections: true,
+          sla_instance: true,
+        },
+      },
+    },
+  });
+
+  if (!pa) throw new NotFoundError('Project approval not found');
+
+  // 4. Documents needed
+  const requiredDocuments = pa.approval_type.document_requirements.map((dr) => ({
+    id: dr.id,
+    document_type: dr.document_type,
+    mandatory: dr.mandatory,
+    condition: dr.condition,
+  }));
+
+  // 5. Prerequisites — look up in this project's approval set
+  const paByTypeId = new Map(
+    pa.project.project_approvals.map((p) => [p.approval_type_id, p])
+  );
+
+  const prerequisites = pa.approval_type.dependent_on.map((dep) => {
+    const prereqPA = paByTypeId.get(dep.prerequisite_approval_type_id);
+    return {
+      approval_type_id: dep.prerequisite_approval_type_id,
+      name: dep.prerequisite_approval.name,
+      dependency_type: dep.dependency_type,
+      status: prereqPA?.status ?? 'NOT_IN_PROJECT',
+      project_approval_id: prereqPA?.id ?? null,
+    };
+  });
+
+  // 6. Downstream — what this approval unlocks
+  const downstream = pa.approval_type.prerequisite_for.map((dep) => {
+    const depPA = paByTypeId.get(dep.dependent_approval_type_id);
+    return {
+      approval_type_id: dep.dependent_approval_type_id,
+      name: dep.dependent_approval.name,
+      dependency_type: dep.dependency_type,
+      status: depPA?.status ?? 'NOT_IN_PROJECT',
+      project_approval_id: depPA?.id ?? null,
+    };
+  });
+
+  // 8. SLA
+  const slaPolicy = pa.approval_type.sla_policies[0];
+  const slaInstance = pa.application?.sla_instance;
+  const now = new Date();
+  let timeRemaining: string | null = null;
+  if (slaInstance?.due_date) {
+    const diffMs = slaInstance.due_date.getTime() - now.getTime();
+    const diffDays = Math.ceil(diffMs / 86_400_000);
+    timeRemaining = diffDays > 0 ? `${diffDays} days remaining` : `Overdue by ${Math.abs(diffDays)} days`;
+  }
+
+  // 10. Next action
+  let nextAction: string;
+  if (pa.status === 'COMPLETED') {
+    nextAction = 'This approval has been obtained. Monitor renewal dates in the Compliance tracker.';
+  } else if (pa.status === 'BLOCKED') {
+    const pendingPrereqs = prerequisites
+      .filter((p) => p.status !== 'COMPLETED')
+      .map((p) => p.name)
+      .join(', ');
+    nextAction = `Obtain prerequisites first: ${pendingPrereqs || 'see prerequisites list'}`;
+  } else if (pa.application?.queries?.some((q) => q.status === 'OPEN')) {
+    nextAction = 'Respond to the open query from the issuing department.';
+  } else if (pa.application?.status === 'INSPECTION_SCHEDULED') {
+    nextAction = 'Prepare the premises for the scheduled inspection.';
+  } else if (!pa.application) {
+    nextAction = 'Create and submit an application to the issuing department.';
+  } else if (pa.application.status === 'IN_PREPARATION') {
+    nextAction = 'Complete and submit the application with all required documents.';
+  } else {
+    nextAction = 'Monitor application status and respond promptly to any queries.';
+  }
+
+  return {
+    // 1. What is this?
+    approval_type: {
+      id: pa.approval_type.id,
+      name: pa.approval_type.name,
+      description: pa.approval_type.description,
+      purpose: pa.approval_type.purpose,
+      category: pa.approval_type.category,
+      source_reference: pa.approval_type.source_reference,
+      requires_inspection: pa.approval_type.requires_inspection,
+      renewal_period_days: pa.approval_type.renewal_period_days,
+    },
+    // 2. Why required?
+    applicability_reason: pa.applicability_reason,
+    // 3. Who issues?
+    authority: pa.approval_type.authority,
+    // 4. Documents
+    required_documents: requiredDocuments,
+    // 5. Prerequisites
+    prerequisites,
+    // 6. Downstream
+    downstream,
+    // 7. Status
+    status: pa.status,
+    priority: pa.priority,
+    blocked_reason: pa.blocked_reason,
+    due_date: pa.due_date,
+    actual_completion_date: pa.actual_completion_date,
+    // 8. SLA
+    sla: slaPolicy
+      ? {
+          configured_duration_days: slaPolicy.duration_days,
+          start_event: slaPolicy.start_event,
+          escalation_level: slaPolicy.escalation_level,
+          instance_status: slaInstance?.status ?? null,
+          due_date: slaInstance?.due_date ?? null,
+          time_remaining: timeRemaining,
+          label: 'Configured service timeline — not a legally guaranteed commitment',
+        }
+      : null,
+    // 9. Application
+    application: pa.application
+      ? {
+          id: pa.application.id,
+          application_number: pa.application.application_number,
+          status: pa.application.status,
+          submitted_at: pa.application.submitted_at,
+          department: pa.application.department,
+          open_queries: pa.application.queries.filter((q) => q.status === 'OPEN').length,
+          upcoming_inspections: pa.application.inspections.filter((i) => i.status === 'SCHEDULED').length,
+          timeline_events: pa.application.events,
+          documents_attached: pa.application.application_documents.length,
+        }
+      : null,
+    // 10. Next action
+    next_action: nextAction,
+  };
 }

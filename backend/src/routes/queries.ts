@@ -31,7 +31,7 @@ router.post('/queries/:id/respond', requireAuth, async (req, res, next) => {
 
 router.patch('/queries/:id/status', requireAuth, async (req, res, next) => {
   try {
-    res.json(await queryService.updateQueryStatus(req.params.id, req.body.status));
+    res.json(await queryService.updateQueryStatus(req.params.id, req.user!.id, req.body.status));
   } catch (err) {
     next(err);
   }

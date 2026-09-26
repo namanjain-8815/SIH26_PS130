@@ -184,12 +184,12 @@ model Project {
   target_start_date DateTime?
   created_at        DateTime  @default(now())
 
-  organization             Organization             @relation(fields: [org_id], references: [id])
-  attributes               ProjectAttribute[]
-  project_approvals        ProjectApproval[]
-  documents                Document[]
-  incentive_matches        IncentiveMatch[]
-  compliance_requirements  ComplianceRequirement[]
+  organization            Organization            @relation(fields: [org_id], references: [id])
+  attributes              ProjectAttribute[]
+  project_approvals       ProjectApproval[]
+  documents               Document[]
+  incentive_matches       IncentiveMatch[]
+  compliance_requirements ComplianceRequirement[]
 }
 
 model ProjectAttribute {
@@ -225,32 +225,32 @@ model ApprovalType {
   document_requirements DocumentRequirement[]
   project_approvals     ProjectApproval[]
   sla_policies          SLAPolicy[]
-  prerequisite_for      ApprovalDependency[] @relation("PrerequisiteApproval")
-  dependent_on          ApprovalDependency[] @relation("DependentApproval")
+  prerequisite_for      ApprovalDependency[]  @relation("PrerequisiteApproval")
+  dependent_on          ApprovalDependency[]  @relation("DependentApproval")
 }
 
 // conditions: RuleCondition[] JSON, see rule-engine/types.ts — keep this a
 // dumb {field, operator, value} AND-group, never an expression language.
 model ApplicabilityRule {
-  id                String    @id @default(uuid())
-  approval_type_id  String
-  rule_name         String
-  conditions        Json
-  jurisdiction      String
-  sector            String?
-  effective_from    DateTime  @default(now())
-  effective_to      DateTime?
-  source_reference  String?
-  active            Boolean   @default(true)
+  id               String    @id @default(uuid())
+  approval_type_id String
+  rule_name        String
+  conditions       Json
+  jurisdiction     String
+  sector           String?
+  effective_from   DateTime  @default(now())
+  effective_to     DateTime?
+  source_reference String?
+  active           Boolean   @default(true)
 
   approval_type ApprovalType @relation(fields: [approval_type_id], references: [id], onDelete: Cascade)
 }
 
 model ApprovalDependency {
-  id                             String         @id @default(uuid())
-  prerequisite_approval_type_id  String
-  dependent_approval_type_id     String
-  dependency_type                DependencyType @default(PREREQUISITE)
+  id                            String         @id @default(uuid())
+  prerequisite_approval_type_id String
+  dependent_approval_type_id    String
+  dependency_type               DependencyType @default(PREREQUISITE)
 
   prerequisite_approval ApprovalType @relation("PrerequisiteApproval", fields: [prerequisite_approval_type_id], references: [id])
   dependent_approval    ApprovalType @relation("DependentApproval", fields: [dependent_approval_type_id], references: [id])
@@ -259,16 +259,16 @@ model ApprovalDependency {
 }
 
 model ProjectApproval {
-  id                     String                 @id @default(uuid())
+  id                     String                @id @default(uuid())
   project_id             String
   approval_type_id       String
   applicability_reason   String
-  status                 ProjectApprovalStatus  @default(NOT_STARTED)
-  priority               Priority               @default(MEDIUM)
+  status                 ProjectApprovalStatus @default(NOT_STARTED)
+  priority               Priority              @default(MEDIUM)
   due_date               DateTime?
   actual_completion_date DateTime?
   blocked_reason         String?
-  created_at             DateTime               @default(now())
+  created_at             DateTime              @default(now())
 
   project       Project      @relation(fields: [project_id], references: [id], onDelete: Cascade)
   approval_type ApprovalType @relation(fields: [approval_type_id], references: [id])
@@ -292,21 +292,21 @@ model DocumentRequirement {
 // ---------------------------------------------------------------------------
 
 model Document {
-  id                  String                      @id @default(uuid())
+  id                  String                     @id @default(uuid())
   org_id              String
   project_id          String
   document_type       String
   file_name           String
   file_url            String
-  version             Int                         @default(1)
-  verification_status DocumentVerificationStatus  @default(PENDING)
+  version             Int                        @default(1)
+  verification_status DocumentVerificationStatus @default(PENDING)
   issued_date         DateTime?
   expiry_date         DateTime?
-  created_at          DateTime                    @default(now())
+  created_at          DateTime                   @default(now())
 
-  organization           Organization           @relation(fields: [org_id], references: [id])
-  project                Project                @relation(fields: [project_id], references: [id], onDelete: Cascade)
-  application_documents  ApplicationDocument[]
+  organization          Organization          @relation(fields: [org_id], references: [id])
+  project               Project               @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  application_documents ApplicationDocument[]
 }
 
 // ---------------------------------------------------------------------------
@@ -324,20 +324,20 @@ model Application {
   completed_at        DateTime?
   created_at          DateTime          @default(now())
 
-  project_approval       ProjectApproval        @relation(fields: [project_approval_id], references: [id], onDelete: Cascade)
-  department             Department             @relation(fields: [department_id], references: [id])
-  application_documents  ApplicationDocument[]
-  events                 ApplicationEvent[]
-  queries                Query[]
-  inspections            Inspection[]
-  sla_instance           SLAInstance?
+  project_approval      ProjectApproval       @relation(fields: [project_approval_id], references: [id], onDelete: Cascade)
+  department            Department            @relation(fields: [department_id], references: [id])
+  application_documents ApplicationDocument[]
+  events                ApplicationEvent[]
+  queries               Query[]
+  inspections           Inspection[]
+  sla_instance          SLAInstance?
 }
 
 model ApplicationDocument {
-  id                String                          @id @default(uuid())
+  id                String                         @id @default(uuid())
   application_id    String
   document_id       String
-  validation_status ApplicationDocValidationStatus  @default(PENDING)
+  validation_status ApplicationDocValidationStatus @default(PENDING)
   validation_notes  String?
 
   application Application @relation(fields: [application_id], references: [id], onDelete: Cascade)
@@ -389,19 +389,19 @@ model QueryResponse {
 }
 
 model Inspection {
-  id             String            @id @default(uuid())
+  id             String           @id @default(uuid())
   application_id String
   department_id  String
   inspector_id   String?
   scheduled_date DateTime
-  status         InspectionStatus  @default(SCHEDULED)
+  status         InspectionStatus @default(SCHEDULED)
   location       String?
   purpose        String?
-  created_at     DateTime          @default(now())
+  created_at     DateTime         @default(now())
 
-  application Application          @relation(fields: [application_id], references: [id], onDelete: Cascade)
-  department  Department           @relation(fields: [department_id], references: [id])
-  inspector   User?                @relation("InspectorUser", fields: [inspector_id], references: [id])
+  application Application         @relation(fields: [application_id], references: [id], onDelete: Cascade)
+  department  Department          @relation(fields: [department_id], references: [id])
+  inspector   User?               @relation("InspectorUser", fields: [inspector_id], references: [id])
   findings    InspectionFinding[]
 }
 

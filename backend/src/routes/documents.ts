@@ -39,4 +39,20 @@ router.patch('/documents/:id', requireAuth, async (req, res, next) => {
   }
 });
 
+router.get('/projects/:id/documents/missing', requireAuth, async (req, res, next) => {
+  try {
+    res.json(await documentService.getMissingDocuments(req.params.id));
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/documents/:id', requireAuth, async (req, res, next) => {
+  try {
+    res.json(await documentService.getDocument(req.params.id));
+  } catch (err) {
+    next(err);
+  }
+});
+
 export default router;

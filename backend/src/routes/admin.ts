@@ -88,7 +88,10 @@ router.get('/audit-log', async (req, res, next) => {
     res.json(
       await auditService.listAuditLog({
         entity_type: req.query.entity_type as string | undefined,
+        entity_id: req.query.entity_id as string | undefined,
         actor_id: req.query.actor_id as string | undefined,
+        action: req.query.action as string | undefined,
+        take: req.query.take ? Number(req.query.take) : undefined,
       })
     );
   } catch (err) {

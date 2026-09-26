@@ -39,7 +39,7 @@ export async function runRegulatoryAnalysis(projectId: string) {
     id: r.id,
     approval_type_id: r.approval_type_id,
     rule_name: r.rule_name,
-    conditions: r.conditions as EvaluableRule['conditions'],
+    conditions: r.conditions as unknown as EvaluableRule['conditions'],
     jurisdiction: r.jurisdiction,
     sector: r.sector,
   }));
@@ -82,7 +82,7 @@ export async function runRegulatoryAnalysis(projectId: string) {
           id: scheme.id,
           approval_type_id: scheme.id,
           rule_name: scheme.name,
-          conditions: scheme.eligibility_rules as EvaluableRule['conditions'],
+          conditions: scheme.eligibility_rules as unknown as EvaluableRule['conditions'],
           jurisdiction: 'maharashtra',
         },
       ]);
