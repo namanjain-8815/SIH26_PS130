@@ -18,7 +18,8 @@ html {
 }
 
 body {
-  @apply bg-surface text-foreground antialiased;
+  @apply bg-surface antialiased;
+  color: hsl(var(--foreground));
 }
 
 /* Smooth scrollbar */
