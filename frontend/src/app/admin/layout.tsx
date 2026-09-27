@@ -5,7 +5,9 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { cn } from '@/lib/utils';
 import { formatRole } from '@/lib/terminology';
-import { FileText, GitMerge, Clock, Gift, ScrollText, LogOut, Building2, ShieldCheck } from 'lucide-react';
+import { FileText, GitMerge, Clock, Gift, ScrollText, LogOut, ShieldCheck, Settings } from 'lucide-react';
+import { AuthLoadingState, PermissionDeniedState } from '@/components/ui/States';
+import { BhashiniSeamButton } from '@/components/ui/BhashiniSeam';
 
 const NAV = [
   { href: '/admin/approval-types',  label: 'Permissions Catalogue',      icon: FileText },
@@ -19,9 +21,38 @@ const NAV = [
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, logout } = useAuth();
+  const { user, loading, logout } = useAuth();
 
-  function handleLogout() { logout(); router.push('/login'); }
+  function handleLogout() {
+    logout();
+    router.push('/login');
+  }
+
+  if (loading) {
+    return <AuthLoadingState message="Verifying System Administrator credentials..." />;
+  }
+
+  if (!user) {
+    return (
+      <PermissionDeniedState
+        title="Authentication Required"
+        description="Please sign in with an authorized System Administrator account to access platform configuration."
+        returnHref="/login"
+        returnLabel="Go to Login"
+      />
+    );
+  }
+
+  if (user.role !== 'ADMIN') {
+    return (
+      <PermissionDeniedState
+        title="Access Restricted · System Administrators Only"
+        description={`This console is strictly restricted to System Administrators. Your current session is authenticated as ${formatRole(user.role)}.`}
+        returnHref="/government/work-queue"
+        returnLabel="Go to My Portal"
+      />
+    );
+  }
 
   return (
     <div className="flex h-screen overflow-hidden bg-surface">
@@ -75,7 +106,31 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         )}
       </aside>
 
-      <main className="flex-1 overflow-y-auto">{children}</main>
+      <main className="flex-1 overflow-y-auto flex flex-col">
+        {/* Top Context Header Bar */}
+        <header className="bg-white border-b border-gray-200 px-6 py-2.5 flex items-center justify-between flex-shrink-0 z-10">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 px-3 py-1 bg-purple-50 border border-purple-200/80 rounded-xl text-purple-900">
+              <Settings className="w-4 h-4 text-purple-700 flex-shrink-0" />
+              <div className="text-xs">
+                <span className="font-semibold text-gray-900">Governance & Configuration Console: </span>
+                <span className="text-purple-800 font-bold">System Administrator</span>
+                <span className="text-gray-400 mx-1.5">|</span>
+                <span className="text-gray-600 font-medium">Regulatory Catalogues & Policies</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2.5">
+            <BhashiniSeamButton />
+            <div className="flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 border border-amber-200 rounded-lg text-[10px] font-bold text-amber-800">
+              <span>PROTOTYPE / DEMO DATA</span>
+            </div>
+          </div>
+        </header>
+
+        <div className="flex-1 p-6">{children}</div>
+      </main>
     </div>
   );
 }

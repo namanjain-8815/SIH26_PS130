@@ -71,6 +71,38 @@ export async function markComplianceCompleted(id: string) {
   });
 }
 
+export async function sendComplianceReminders(projectId: string, userId: string) {
+  const reqs = await prisma.complianceRequirement.findMany({
+    where: { project_id: projectId },
+  });
+
+  const now = new Date();
+  const in90Days = new Date(now.getTime() + 90 * 86_400_000);
+  let remindersSent = 0;
+
+  for (const req of reqs) {
+    if (req.status === 'COMPLETED') continue;
+    const dueDate = new Date(req.next_due_date);
+    if (dueDate <= in90Days) {
+      const daysLeft = Math.ceil((dueDate.getTime() - now.getTime()) / 86_400_000);
+      const isOverdue = daysLeft < 0;
+      await prisma.notification.create({
+        data: {
+          user_id: userId,
+          title: isOverdue ? `Statutory Compliance Overdue — ${req.name}` : `Renewal / Compliance Reminder — ${req.name}`,
+          message: isOverdue
+            ? `Compliance requirement "${req.name}" under ${req.authority} is ${Math.abs(daysLeft)} days overdue. Immediate action required.`
+            : `Statutory compliance for "${req.name}" (${req.authority}) is due in ${daysLeft} days on ${dueDate.toLocaleDateString()}. Frequency: ${req.frequency}.`,
+          type: isOverdue || daysLeft <= 30 ? 'warning' : 'info',
+        },
+      });
+      remindersSent++;
+    }
+  }
+
+  return { success: true, reminders_sent: remindersSent };
+}
+
 /**
  * When a ProjectApproval with a renewal_period_days is COMPLETED,
  * auto-create the next ComplianceRequirement (the renewal).

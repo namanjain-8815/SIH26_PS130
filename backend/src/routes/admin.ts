@@ -15,15 +15,16 @@ router.use(requireAuth, requireRole('ADMIN'));
 // is audit-logged (plan §39).
 interface CrudModel {
   findMany: (...args: unknown[]) => Promise<unknown>;
+  findUnique?: (...args: unknown[]) => Promise<unknown>;
   create: (...args: unknown[]) => Promise<{ id: string }>;
   update: (...args: unknown[]) => Promise<unknown>;
   delete: (...args: unknown[]) => Promise<unknown>;
 }
 
-function mountCrud(path: string, model: CrudModel) {
+function mountCrud(path: string, model: CrudModel, defaultInclude?: Record<string, boolean>) {
   router.get(`/${path}`, (async (_req, res, next) => {
     try {
-      res.json(await model.findMany());
+      res.json(await model.findMany(defaultInclude ? { include: defaultInclude } : undefined));
     } catch (err) {
       next(err);
     }
@@ -31,13 +32,19 @@ function mountCrud(path: string, model: CrudModel) {
 
   router.post(`/${path}`, (async (req, res, next) => {
     try {
-      const created = await model.create({ data: req.body });
+      const data = { ...req.body };
+      if (path === 'approval-types') {
+        if (!data.purpose) data.purpose = data.description || data.name;
+        if (!data.description) data.description = data.purpose || data.name;
+        if (data.active === undefined) data.active = true;
+      }
+      const created = await model.create({ data });
       await auditService.recordAudit({
         actor_id: req.user!.id,
         action: 'create',
         entity_type: path,
         entity_id: created.id,
-        after_data: req.body,
+        after_data: data,
       });
       res.status(201).json(created);
     } catch (err) {
@@ -47,12 +54,14 @@ function mountCrud(path: string, model: CrudModel) {
 
   router.patch(`/${path}/:id`, (async (req, res, next) => {
     try {
+      const before = model.findUnique ? await model.findUnique({ where: { id: req.params.id } }) : undefined;
       const updated = await model.update({ where: { id: req.params.id }, data: req.body });
       await auditService.recordAudit({
         actor_id: req.user!.id,
         action: 'update',
         entity_type: path,
         entity_id: req.params.id,
+        before_data: before,
         after_data: req.body,
       });
       res.json(updated);
@@ -63,12 +72,14 @@ function mountCrud(path: string, model: CrudModel) {
 
   router.delete(`/${path}/:id`, (async (req, res, next) => {
     try {
+      const before = model.findUnique ? await model.findUnique({ where: { id: req.params.id } }) : undefined;
       await model.delete({ where: { id: req.params.id } });
       await auditService.recordAudit({
         actor_id: req.user!.id,
         action: 'delete',
         entity_type: path,
         entity_id: req.params.id,
+        before_data: before,
       });
       res.status(204).end();
     } catch (err) {
@@ -78,9 +89,12 @@ function mountCrud(path: string, model: CrudModel) {
 }
 
 mountCrud('approval-types', prisma.approvalType as unknown as CrudModel);
-mountCrud('rules', prisma.applicabilityRule as unknown as CrudModel);
-mountCrud('dependencies', prisma.approvalDependency as unknown as CrudModel);
-mountCrud('sla-policies', prisma.sLAPolicy as unknown as CrudModel);
+mountCrud('rules', prisma.applicabilityRule as unknown as CrudModel, { approval_type: true });
+mountCrud('dependencies', prisma.approvalDependency as unknown as CrudModel, {
+  prerequisite_approval_type: true,
+  dependent_approval_type: true,
+});
+mountCrud('sla-policies', prisma.sLAPolicy as unknown as CrudModel, { approval_type: true });
 mountCrud('incentive-schemes', prisma.incentiveScheme as unknown as CrudModel);
 
 router.get('/audit-log', async (req, res, next) => {

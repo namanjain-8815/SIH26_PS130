@@ -98,6 +98,8 @@ export const applicationsApi = {
     api.delete(`/applications/${id}/documents/${document_id}`),
   recordCoordinationNote: (id: string, body: { note: string; event_type?: string }) =>
     api.post(`/applications/${id}/coordination-note`, body),
+  escalate: (id: string, reason?: string) =>
+    api.post<{ success: boolean; message: string }>(`/applications/${id}/escalate`, { reason }),
   create: (project_approval_id: string, department_id?: string) =>
     api.post<{ id: string; application_number: string }>('/applications', { project_approval_id, department_id }),
 };
@@ -141,6 +143,35 @@ export const notificationsApi = {
   markAllRead: () => api.patch('/notifications/mark-all-read', {}),
 };
 
+// Compliance
+export const complianceApi = {
+  list: (projectId: string) => api.get<import('@/types/api').ComplianceItem[]>(`/projects/${projectId}/compliance`),
+  complete: (id: string) => api.patch(`/compliance/${id}/complete`, {}),
+  remind: (projectId: string) => api.post<{ success: boolean; reminders_sent: number }>(`/projects/${projectId}/compliance/remind`, {}),
+};
+
+// Incentives
+export const incentivesApi = {
+  list: (projectId: string) => api.get<Array<{
+    id: string;
+    status: string;
+    matching_reasons: string[];
+    scheme: {
+      id: string;
+      name: string;
+      authority: string;
+      description: string;
+      benefit_description: string;
+      deadline: string | null;
+      source_reference: string | null;
+    };
+    label: string;
+  }>>(`/projects/${projectId}/incentives`),
+  updateStatus: (matchId: string, status: string) =>
+    api.patch(`/incentives/${matchId}/status`, { status }),
+  allSchemes: () => api.get<unknown[]>('/incentive-schemes'),
+};
+
 // Government
 export const governmentApi = {
   departments: () =>
@@ -157,21 +188,95 @@ export const governmentApi = {
     const query = params.toString();
     return api.get<WorkQueueItem[]>(`/government/work-queue${query ? `?${query}` : ''}`);
   },
-  bottlenecks: () => api.get<unknown>('/government/bottlenecks'),
-  analytics: () => api.get<AnalyticsSummary>('/government/analytics'),
+  bottlenecks: (department_id?: string) => {
+    const valid = department_id && department_id !== 'undefined' && department_id !== 'null';
+    return api.get<any>(`/government/bottlenecks${valid ? `?department_id=${department_id}` : ''}`);
+  },
+  analytics: (department_id?: string) => {
+    const valid = department_id && department_id !== 'undefined' && department_id !== 'null';
+    return api.get<any>(`/government/analytics${valid ? `?department_id=${department_id}` : ''}`);
+  },
   slaMonitor: (department_id?: string) => {
     const valid = department_id && department_id !== 'undefined' && department_id !== 'null';
     return api.get<unknown[]>(`/government/sla-monitor${valid ? `?department_id=${department_id}` : ''}`);
   },
+  evaluateSla: () => api.post<{ evaluated_count: number; evaluations: unknown[] }>('/government/sla-monitor/evaluate', {}),
 };
 
 // Admin
 export const adminApi = {
   approvalTypes: {
-    list: () => api.get('/admin/approval-types'),
+    list: () => api.get<Array<{
+      id: string;
+      name: string;
+      authority: string;
+      category: string;
+      description: string;
+      purpose: string;
+      default_sla_days: number;
+      renewal_period_days: number | null;
+      requires_inspection: boolean;
+      source_reference: string | null;
+    }>>('/admin/approval-types'),
     create: (data: object) => api.post('/admin/approval-types', data),
     update: (id: string, data: object) => api.patch(`/admin/approval-types/${id}`, data),
     delete: (id: string) => api.delete(`/admin/approval-types/${id}`),
+  },
+  rules: {
+    list: () => api.get<Array<{
+      id: string;
+      approval_type_id: string;
+      jurisdiction: string | null;
+      sector: string | null;
+      active: boolean;
+      effective_from: string | null;
+      effective_to: string | null;
+      approval_type?: { name: string; authority: string };
+      conditions: unknown;
+    }>>('/admin/rules'),
+    create: (data: object) => api.post('/admin/rules', data),
+    update: (id: string, data: object) => api.patch(`/admin/rules/${id}`, data),
+    delete: (id: string) => api.delete(`/admin/rules/${id}`),
+  },
+  dependencies: {
+    list: () => api.get<Array<{
+      id: string;
+      dependency_type: string;
+      prerequisite_approval_type_id: string;
+      dependent_approval_type_id: string;
+      prerequisite_approval_type?: { name: string; authority: string };
+      dependent_approval_type?: { name: string; authority: string };
+    }>>('/admin/dependencies'),
+    create: (data: object) => api.post('/admin/dependencies', data),
+    update: (id: string, data: object) => api.patch(`/admin/dependencies/${id}`, data),
+    delete: (id: string) => api.delete(`/admin/dependencies/${id}`),
+  },
+  slaPolicies: {
+    list: () => api.get<Array<{
+      id: string;
+      approval_type_id: string;
+      duration_days: number;
+      start_event: string;
+      escalation_level: string;
+      approval_type?: { name: string; authority: string };
+    }>>('/admin/sla-policies'),
+    create: (data: object) => api.post('/admin/sla-policies', data),
+    update: (id: string, data: object) => api.patch(`/admin/sla-policies/${id}`, data),
+    delete: (id: string) => api.delete(`/admin/sla-policies/${id}`),
+  },
+  incentiveSchemes: {
+    list: () => api.get<Array<{
+      id: string;
+      name: string;
+      authority: string;
+      description: string;
+      benefit_description: string;
+      deadline: string | null;
+      source_reference: string | null;
+    }>>('/admin/incentive-schemes'),
+    create: (data: object) => api.post('/admin/incentive-schemes', data),
+    update: (id: string, data: object) => api.patch(`/admin/incentive-schemes/${id}`, data),
+    delete: (id: string) => api.delete(`/admin/incentive-schemes/${id}`),
   },
   auditLog: (filters?: { entity_type?: string; actor_id?: string; action?: string }) => {
     const params = new URLSearchParams(filters as Record<string, string>).toString();

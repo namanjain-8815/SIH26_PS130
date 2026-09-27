@@ -7,7 +7,7 @@ import { prisma } from '../lib/prisma';
 
 const router = Router();
 
-router.use(requireAuth, requireRole('OFFICER', 'NODAL', 'ADMIN'));
+router.use(requireAuth, requireRole('OFFICER', 'NODAL', 'ADMIN', 'INSPECTOR'));
 
 function sanitizeParam(val: unknown): string | undefined {
   if (typeof val !== 'string') return undefined;
@@ -30,17 +30,17 @@ router.get('/work-queue', async (req, res, next) => {
   }
 });
 
-router.get('/bottlenecks', async (_req, res, next) => {
+router.get('/bottlenecks', async (req, res, next) => {
   try {
-    res.json(await analyticsService.getBottlenecks());
+    res.json(await analyticsService.getBottlenecks({ department_id: sanitizeParam(req.query.department_id) }));
   } catch (err) {
     next(err);
   }
 });
 
-router.get('/analytics', async (_req, res, next) => {
+router.get('/analytics', async (req, res, next) => {
   try {
-    res.json(await analyticsService.getAnalyticsSummary());
+    res.json(await analyticsService.getAnalyticsSummary({ department_id: sanitizeParam(req.query.department_id) }));
   } catch (err) {
     next(err);
   }
@@ -52,6 +52,14 @@ router.get('/sla-monitor', async (req, res, next) => {
         sanitizeParam(req.query.department_id)
       )
     );
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/sla-monitor/evaluate', async (_req, res, next) => {
+  try {
+    res.json(await slaService.evaluateAndNotifySLAs());
   } catch (err) {
     next(err);
   }

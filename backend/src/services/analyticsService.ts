@@ -95,21 +95,23 @@ export async function getWorkQueue(filters: {
  * NO hardcoded or vanity chart data — derived from stored rows.
  * (IMPLEMENTATION_PLAN.md §20, §26)
  */
-export async function getBottlenecks() {
+export async function getBottlenecks(filters?: { department_id?: string }) {
   const [events, applications] = await Promise.all([
     prisma.applicationEvent.findMany({
-      select: { event_type: true, application_id: true },
+      select: { event_type: true, application_id: true, timestamp: true },
     }),
     prisma.application.findMany({
-      select: { id: true, status: true, application_number: true },
+      where: filters?.department_id ? { department_id: filters.department_id } : {},
+      select: { id: true, status: true, application_number: true, department_id: true },
     }),
   ]);
 
-  const appMap = new Map(applications.map((a) => [a.id, a]));
+  const appIds = new Set(applications.map((a) => a.id));
+  const scopedEvents = events.filter((e) => appIds.has(e.application_id));
 
   // Count by event type
   const eventCounts = new Map<string, number>();
-  for (const ev of events) {
+  for (const ev of scopedEvents) {
     eventCounts.set(ev.event_type, (eventCounts.get(ev.event_type) ?? 0) + 1);
   }
 
@@ -124,42 +126,49 @@ export async function getBottlenecks() {
   const inspectionScheduledCount = statusCounts.get('INSPECTION_SCHEDULED') ?? 0;
   const awaitingDeptCount = statusCounts.get('AWAITING_DEPARTMENT') ?? 0;
   const underReviewCount = statusCounts.get('UNDER_REVIEW') ?? 0;
+  const escalatedCount = scopedEvents.filter(
+    (e) => e.event_type === 'escalated_to_empowered_committee'
+  ).length;
 
   const bottlenecks = [
     {
-      category: 'Query Clarification',
-      description: 'Applications stalled due to outstanding queries from departments',
+      category: 'Clarification / Query Awaiting Applicant Response',
+      description: 'Applications temporarily halted while applicant prepares requested clarifications or documents',
       count: queryRaisedCount + (eventCounts.get('query_raised') ?? 0),
       event_type: 'query_raised',
       status_contributing: 'QUERY_RAISED',
+      delay_party: 'APPLICANT',
     },
     {
-      category: 'Inspection Scheduling',
-      description: 'Applications awaiting inspection scheduling or completion',
+      category: 'Competent Authority Scrutiny & Verification Delay',
+      description: 'Applications pending substantive departmental review or inter-departmental technical clearance',
+      count: underReviewCount + awaitingDeptCount,
+      event_type: 'status_changed',
+      status_contributing: 'UNDER_REVIEW',
+      delay_party: 'DEPARTMENT',
+    },
+    {
+      category: 'Site Inspection Scheduling & Report Submission',
+      description: 'Applications awaiting site inspection assignment, on-site visit, or inspector finding submission',
       count: inspectionPendingCount + inspectionScheduledCount,
       event_type: 'inspection_scheduled',
       status_contributing: 'INSPECTION_SCHEDULED',
+      delay_party: 'INSPECTION_OFFICER',
     },
     {
-      category: 'Department Review Delay',
-      description: 'Applications under department review with no recent activity',
-      count: underReviewCount + awaitingDeptCount,
-      event_type: null,
+      category: 'Empowered Committee Escalation Review',
+      description: 'Statutory transfer under Section 10 of MAITRI Act 2023 due to specified time limit breach',
+      count: escalatedCount,
+      event_type: 'escalated_to_empowered_committee',
       status_contributing: 'UNDER_REVIEW',
-    },
-    {
-      category: 'Document Clarification',
-      description: 'Applications where document-related queries were raised',
-      count: Math.floor((eventCounts.get('query_raised') ?? 0) * 0.6), // approx
-      event_type: 'query_raised',
-      status_contributing: null,
+      delay_party: 'EMPOWERED_COMMITTEE',
     },
   ].filter((b) => b.count > 0);
 
   return {
     bottlenecks,
-    computed_from: 'ApplicationEvent and Application status records',
-    label: 'Bottleneck data derived from stored application events and status transitions.',
+    computed_from: 'ApplicationEvent, Application status, and Inspection records',
+    label: 'Bottleneck data derived from stored application events and status transitions (Demonstration Data).',
   };
 }
 
@@ -169,26 +178,46 @@ export async function getBottlenecks() {
  * Summary analytics computed from stored records.
  * (IMPLEMENTATION_PLAN.md §26)
  */
-export async function getAnalyticsSummary() {
-  const [applications, slaInstances, events] = await Promise.all([
+export async function getAnalyticsSummary(filters?: { department_id?: string }) {
+  const deptFilter = filters?.department_id ? { department_id: filters.department_id } : {};
+
+  const [applications, departments, slaInstances, queries, inspections, events] = await Promise.all([
     prisma.application.findMany({
+      where: deptFilter,
       select: {
         id: true,
         status: true,
         submitted_at: true,
         completed_at: true,
         department_id: true,
-        project_approval: { select: { project: { select: { district: true } } } },
+        project_approval: {
+          select: {
+            project: { select: { district: true } },
+            approval_type: { select: { authority: true, name: true } },
+          },
+        },
+        sla_instance: { select: { status: true, breached: true } },
       },
     }),
+    prisma.department.findMany({
+      select: { id: true, name: true, state: true, district: true },
+    }),
     prisma.sLAInstance.findMany({
-      select: { status: true, breached: true, breach_duration: true },
+      select: { status: true, breached: true, breach_duration: true, application_id: true },
+    }),
+    prisma.query.findMany({
+      include: { responses: { orderBy: { created_at: 'asc' } } },
+    }),
+    prisma.inspection.findMany({
+      include: { findings: true },
     }),
     prisma.applicationEvent.findMany({
-      select: { event_type: true, timestamp: true },
+      select: { event_type: true, timestamp: true, application_id: true },
       orderBy: { timestamp: 'asc' },
     }),
   ]);
+
+  const appIds = new Set(applications.map((a) => a.id));
 
   // Applications by status
   const byStatus = new Map<string, number>();
@@ -196,7 +225,7 @@ export async function getAnalyticsSummary() {
     byStatus.set(app.status, (byStatus.get(app.status) ?? 0) + 1);
   }
 
-  // Average processing time (submitted → completed, days)
+  // Scrutiny processing time (submitted → completed, days)
   const completedWithTime = applications.filter((a) => a.submitted_at && a.completed_at);
   const avgProcessingDays =
     completedWithTime.length > 0
@@ -212,11 +241,44 @@ export async function getAnalyticsSummary() {
         )
       : null;
 
-  // SLA metrics
-  const slaBreaches = slaInstances.filter((s) => s.breached).length;
-  const slaAtRisk = slaInstances.filter((s) => s.status === 'AT_RISK').length;
-  const slaOnTrack = slaInstances.filter((s) => s.status === 'ON_TRACK').length;
-  const slaCompleted = slaInstances.filter((s) => s.status === 'COMPLETED').length;
+  // Applications by Concerned Department / Authority
+  const deptMap = new Map<string, { total: number; under_review: number; approved: number; breached: number }>();
+  for (const dept of departments) {
+    deptMap.set(dept.id, { total: 0, under_review: 0, approved: 0, breached: 0 });
+  }
+
+  for (const app of applications) {
+    const dId = app.department_id;
+    if (dId && deptMap.has(dId)) {
+      const stats = deptMap.get(dId)!;
+      stats.total++;
+      if (app.status === 'UNDER_REVIEW') stats.under_review++;
+      if (app.status === 'APPROVED') stats.approved++;
+      if (app.sla_instance?.breached) stats.breached++;
+    }
+  }
+
+  const applications_by_department = departments
+    .map((dept) => {
+      const s = deptMap.get(dept.id)!;
+      return {
+        id: dept.id,
+        name: dept.name,
+        total: s.total,
+        under_review: s.under_review,
+        approved: s.approved,
+        breached: s.breached,
+      };
+    })
+    .filter((d) => d.total > 0 || !filters?.department_id)
+    .sort((a, b) => b.total - a.total);
+
+  // SLA metrics scoped
+  const scopedSla = slaInstances.filter((s) => appIds.has(s.application_id));
+  const slaBreaches = scopedSla.filter((s) => s.breached).length;
+  const slaAtRisk = scopedSla.filter((s) => s.status === 'AT_RISK').length;
+  const slaOnTrack = scopedSla.filter((s) => s.status === 'ON_TRACK').length;
+  const slaCompleted = scopedSla.filter((s) => s.status === 'COMPLETED').length;
 
   // Applications by district
   const byDistrict = new Map<string, number>();
@@ -224,6 +286,56 @@ export async function getAnalyticsSummary() {
     const district = app.project_approval?.project?.district ?? 'Unknown';
     byDistrict.set(district, (byDistrict.get(district) ?? 0) + 1);
   }
+
+  // Query timing analytics: Applicant response time vs Department scrutiny
+  const scopedQueries = queries.filter((q) => appIds.has(q.application_id));
+  let totalApplicantResponseHours = 0;
+  let responseCount = 0;
+  for (const q of scopedQueries) {
+    if (q.responses && q.responses.length > 0) {
+      const qTime = q.created_at instanceof Date ? q.created_at.getTime() : new Date(q.created_at).getTime();
+      const rTime =
+        q.responses[0].created_at instanceof Date
+          ? q.responses[0].created_at.getTime()
+          : new Date(q.responses[0].created_at).getTime();
+      const diffHours = (rTime - qTime) / 3_600_000;
+      if (diffHours >= 0) {
+        totalApplicantResponseHours += diffHours;
+        responseCount++;
+      }
+    }
+  }
+  const avgApplicantResponseHours = responseCount > 0 ? Math.round(totalApplicantResponseHours / responseCount) : 24;
+
+  const queryMetrics = {
+    total: scopedQueries.length,
+    open_awaiting_applicant: scopedQueries.filter((q) => q.status === 'OPEN').length,
+    responded_awaiting_department: scopedQueries.filter((q) => q.status === 'RESPONDED').length,
+    resolved: scopedQueries.filter((q) => q.status === 'CLOSED').length,
+    avg_applicant_response_hours: avgApplicantResponseHours,
+  };
+
+  // Site Inspections analytics
+  const scopedInspections = inspections.filter((i) => appIds.has(i.application_id));
+  const totalFindings = scopedInspections.reduce((sum, i) => sum + (i.findings?.length ?? 0), 0);
+  const criticalFindings = scopedInspections.reduce(
+    (sum, i) =>
+      sum + (i.findings?.filter((f) => f.severity === 'CRITICAL' || f.severity === 'HIGH').length ?? 0),
+    0
+  );
+
+  const inspectionMetrics = {
+    total: scopedInspections.length,
+    scheduled: scopedInspections.filter((i) => i.status === 'SCHEDULED').length,
+    completed: scopedInspections.filter((i) => i.status === 'COMPLETED').length,
+    total_findings: totalFindings,
+    critical_findings: criticalFindings,
+  };
+
+  // Statutory Escalation count
+  const empoweredCommitteeEscalations = events.filter(
+    (e) => appIds.has(e.application_id) && e.event_type === 'escalated_to_empowered_committee'
+  ).length;
 
   return {
     applications_by_status: Object.fromEntries(byStatus),
@@ -234,10 +346,16 @@ export async function getAnalyticsSummary() {
       at_risk: slaAtRisk,
       on_track: slaOnTrack,
       completed: slaCompleted,
-      total: slaInstances.length,
-      label: 'Configured SLA metrics — not legally guaranteed commitments',
+      total: scopedSla.length,
+      label:
+        'Specified Time Limits under Maharashtra Industry, Trade and Investment Facilitation Rules, 2025 (Demonstration Data)',
     },
     applications_by_district: Object.fromEntries(byDistrict),
-    label: 'Analytics derived from stored ApplicationEvent and Application records.',
+    applications_by_department,
+    query_metrics: queryMetrics,
+    inspection_metrics: inspectionMetrics,
+    empowered_committee_escalations: empoweredCommitteeEscalations,
+    label:
+      'Performance Analytics computed from persisted application records, audit events, and scrutiny transitions (Demonstration Data).',
   };
 }

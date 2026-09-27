@@ -61,9 +61,14 @@ const RELATION_MAP: Record<string, Record<string, RelationDef>> = {
     project_approvals: { table: 'ProjectApproval', foreignKey: 'approval_type_id', isMany: true },
     sla_policies: { table: 'SLAPolicy', foreignKey: 'approval_type_id', isMany: true },
   },
+  ApplicabilityRule: {
+    approval_type: { table: 'ApprovalType', foreignKey: 'approval_type_id', isMany: false, isParent: true },
+  },
   ApprovalDependency: {
     prerequisite_approval: { table: 'ApprovalType', foreignKey: 'prerequisite_approval_type_id', isMany: false, isParent: true },
     dependent_approval: { table: 'ApprovalType', foreignKey: 'dependent_approval_type_id', isMany: false, isParent: true },
+    prerequisite_approval_type: { table: 'ApprovalType', foreignKey: 'prerequisite_approval_type_id', isMany: false, isParent: true },
+    dependent_approval_type: { table: 'ApprovalType', foreignKey: 'dependent_approval_type_id', isMany: false, isParent: true },
   },
   Application: {
     project_approval: { table: 'ProjectApproval', foreignKey: 'project_approval_id', isMany: false, isParent: true },

@@ -61,8 +61,10 @@ export async function computeSLAStatus(applicationId: string) {
   return {
     ...instance,
     configured_duration_days: slaPolicy.duration_days,
+    specified_time_limit_days: slaPolicy.duration_days,
     start_event: slaPolicy.start_event,
-    label: 'Configured service timeline — not a legally guaranteed commitment',
+    statutory_reference: 'Maharashtra Industry, Trade and Investment Facilitation Rules, 2025',
+    label: 'Configured service timeline — statutory specified time limit under MAITRI Rules (Demonstration Data)',
   };
 }
 
@@ -85,7 +87,7 @@ export async function getProjectSLAStatus(projectId: string) {
     approval_name: inst.application.project_approval.approval_type.name,
     application_number: inst.application.application_number,
     department_name: inst.application.department.name,
-    label: 'Configured service timeline — not a legally guaranteed commitment',
+    label: 'Configured service timeline — statutory specified time limit under MAITRI Rules (Demonstration Data)',
   }));
 }
 
@@ -96,26 +98,66 @@ export async function getGovernmentSLAMonitor(departmentId?: string) {
       application: {
         include: {
           project_approval: {
-            include: { project: { include: { organization: true } }, approval_type: true },
+            include: { project: { include: { organization: true } }, approval_type: { include: { sla_policies: true } } },
           },
           department: true,
+          events: true,
         },
       },
     },
     orderBy: { due_date: 'asc' },
   });
 
-  return instances.map((inst) => ({
-    id: inst.id,
-    application_number: inst.application.application_number,
-    approval_name: inst.application.project_approval.approval_type.name,
-    org_name: inst.application.project_approval.project.organization.legal_name,
-    department_name: inst.application.department.name,
-    sla_status: inst.status,
-    due_date: inst.due_date,
-    breached: inst.breached,
-    breach_duration_days: inst.breach_duration,
-    application_status: inst.application.status,
-    label: 'Configured service timeline — not a legally guaranteed commitment',
-  }));
+  return instances.map((inst) => {
+    const isCompleted = ['APPROVED', 'CLOSED', 'REJECTED'].includes(inst.application.status);
+    const isEscalated = inst.application.events?.some(
+      (e: any) => e.event_type === 'escalated_to_empowered_committee'
+    ) ?? false;
+    const slaDurationDays = inst.application.project_approval.approval_type?.sla_policies?.[0]?.duration_days ?? 30;
+
+    return {
+      id: inst.id,
+      application_id: inst.application.id,
+      application_number: inst.application.application_number,
+      approval_name: inst.application.project_approval.approval_type.name,
+      org_name: inst.application.project_approval.project.organization.legal_name,
+      department_name: inst.application.department.name,
+      department_id: inst.application.department_id,
+      sla_status: inst.status,
+      specified_time_limit_days: slaDurationDays,
+      due_date: inst.due_date,
+      breached: inst.breached,
+      breach_duration_days: inst.breach_duration,
+      application_status: inst.application.status,
+      is_escalated: isEscalated,
+      can_escalate: !isCompleted && (inst.breached || inst.status === 'AT_RISK'),
+      statutory_reference: 'Maharashtra Industry, Trade and Investment Facilitation Rules, 2025',
+      label: 'Configured service timeline — statutory specified time limit under MAITRI Rules (Demonstration Data)',
+    };
+  });
+}
+
+export async function evaluateAndNotifySLAs() {
+  const activeApplications = await prisma.application.findMany({
+    where: { status: { in: ['SUBMITTED', 'UNDER_REVIEW', 'QUERY_RAISED', 'INSPECTION_PENDING', 'INSPECTION_SCHEDULED'] } },
+    include: {
+      project_approval: { include: { approval_type: { include: { sla_policies: true } }, project: true } },
+      department: true,
+    },
+  });
+
+  const evaluations: any[] = [];
+  for (const app of activeApplications) {
+    const sla = await computeSLAStatus(app.id);
+    if (!sla) continue;
+
+    evaluations.push({
+      application_number: app.application_number,
+      approval_name: app.project_approval.approval_type.name,
+      status: sla.status,
+      due_date: sla.due_date,
+    });
+  }
+
+  return { evaluated_count: evaluations.length, evaluations };
 }

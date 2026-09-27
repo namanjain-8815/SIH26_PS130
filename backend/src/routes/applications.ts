@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { requireAuth } from '../middleware/auth';
+import { requireRole } from '../middleware/roleGuard';
 import * as applicationService from '../services/applicationService';
 
 const router = Router();
@@ -32,6 +33,14 @@ router.get('/applications/:id', requireAuth, async (req, res, next) => {
   }
 });
 
+router.get('/applications/:id/external-status', requireAuth, async (req, res, next) => {
+  try {
+    res.json(await applicationService.getSimulatedGatewayStatus(req.params.id));
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.patch('/applications/:id/status', requireAuth, async (req, res, next) => {
   try {
     const { status, notes } = req.body as { status: string; notes?: string };
@@ -49,7 +58,7 @@ router.get('/applications/:id/timeline', requireAuth, async (req, res, next) => 
   }
 });
 
-router.post('/applications/:id/coordination-note', requireAuth, async (req, res, next) => {
+router.post('/applications/:id/coordination-note', requireAuth, requireRole('OFFICER', 'NODAL', 'ADMIN', 'INSPECTOR'), async (req, res, next) => {
   try {
     const { note, notes, event_type } = req.body as { note?: string; notes?: string; event_type?: string };
     const content = note || notes || 'Inter-department coordination note recorded';
@@ -60,6 +69,17 @@ router.post('/applications/:id/coordination-note', requireAuth, async (req, res,
         content,
         event_type || 'nodal_coordination_note'
       )
+    );
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/applications/:id/escalate', requireAuth, requireRole('OFFICER', 'NODAL', 'ADMIN', 'ENTREPRENEUR'), async (req, res, next) => {
+  try {
+    const { reason } = req.body as { reason?: string };
+    res.status(200).json(
+      await applicationService.escalateApplication(req.params.id, req.user!.id, reason)
     );
   } catch (err) {
     next(err);

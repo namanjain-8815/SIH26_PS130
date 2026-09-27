@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { requireAuth } from '../middleware/auth';
+import { requireRole } from '../middleware/roleGuard';
 import * as inspectionService from '../services/inspectionService';
 
 const router = Router();
@@ -12,7 +13,7 @@ router.get('/projects/:id/inspections', requireAuth, async (req, res, next) => {
   }
 });
 
-router.post('/projects/:id/inspections', requireAuth, async (req, res, next) => {
+router.post('/projects/:id/inspections', requireAuth, requireRole('OFFICER', 'INSPECTOR', 'ADMIN', 'NODAL'), async (req, res, next) => {
   try {
     res.status(201).json(await inspectionService.scheduleInspection(req.body));
   } catch (err) {
@@ -20,7 +21,7 @@ router.post('/projects/:id/inspections', requireAuth, async (req, res, next) => 
   }
 });
 
-router.post('/inspections', requireAuth, async (req, res, next) => {
+router.post('/inspections', requireAuth, requireRole('OFFICER', 'INSPECTOR', 'ADMIN', 'NODAL'), async (req, res, next) => {
   try {
     res.status(201).json(await inspectionService.scheduleInspection(req.body));
   } catch (err) {
@@ -40,13 +41,16 @@ router.get('/inspections', requireAuth, async (req, res, next) => {
 
 router.patch('/inspections/:id', requireAuth, async (req, res, next) => {
   try {
+    if (req.body.status === 'COMPLETED' && !['OFFICER', 'INSPECTOR', 'ADMIN'].includes(req.user!.role)) {
+      return res.status(403).json({ error: 'Only Designated Inspection Officers or Competent Authority Officers can complete inspections.' });
+    }
     res.json(await inspectionService.updateInspection(req.params.id, req.user!.id, req.body));
   } catch (err) {
     next(err);
   }
 });
 
-router.post('/inspections/:id/findings', requireAuth, async (req, res, next) => {
+router.post('/inspections/:id/findings', requireAuth, requireRole('OFFICER', 'INSPECTOR', 'ADMIN'), async (req, res, next) => {
   try {
     res.status(201).json(await inspectionService.recordFinding(req.params.id, req.body));
   } catch (err) {
@@ -54,7 +58,7 @@ router.post('/inspections/:id/findings', requireAuth, async (req, res, next) => 
   }
 });
 
-router.patch('/inspections/findings/:findingId', requireAuth, async (req, res, next) => {
+router.patch('/inspections/findings/:findingId', requireAuth, requireRole('OFFICER', 'INSPECTOR', 'ADMIN'), async (req, res, next) => {
   try {
     res.json(await inspectionService.updateFinding(req.params.findingId, req.user!.id, req.body));
   } catch (err) {

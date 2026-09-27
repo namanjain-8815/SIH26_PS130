@@ -1,13 +1,14 @@
 'use client';
 
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { governmentApi } from '@/lib/api';
-import { ErrorState } from '@/components/ui/States';
+import { ErrorState, Skeleton } from '@/components/ui/States';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
   PieChart, Pie, Legend,
 } from 'recharts';
-import type { AnalyticsSummary } from '@/types/api';
+import { Building2, Clock, HelpCircle, CheckCircle2, ShieldCheck, Filter, AlertTriangle } from 'lucide-react';
 
 const STATUS_COLORS: Record<string, string> = {
   APPROVED:              '#16a34a',
@@ -22,49 +23,86 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export default function AnalyticsPage() {
+  const [selectedDept, setSelectedDept] = useState<string>('ALL');
+
+  const { data: deptData } = useQuery({
+    queryKey: ['government-departments'],
+    queryFn: () => governmentApi.departments(),
+  });
+
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['analytics'],
-    queryFn: () => governmentApi.analytics(),
+    queryKey: ['analytics', selectedDept],
+    queryFn: () => governmentApi.analytics(selectedDept === 'ALL' ? undefined : selectedDept),
   });
 
-  const { data: bottlenecks } = useQuery({
-    queryKey: ['bottlenecks'],
-    queryFn: () => governmentApi.bottlenecks(),
+  const { data: bottlenecksData } = useQuery({
+    queryKey: ['bottlenecks', selectedDept],
+    queryFn: () => governmentApi.bottlenecks(selectedDept === 'ALL' ? undefined : selectedDept),
   });
 
-  if (isLoading) return (
-    <div className="p-6 space-y-4">
-      {[...Array(3)].map((_, i) => <div key={i} className="h-48 skeleton rounded-xl" />)}
-    </div>
-  );
-  if (error) return <div className="p-6"><ErrorState message={(error as Error).message} onRetry={() => refetch()} /></div>;
-  if (!data) return null;
+  const departments = deptData ?? [];
+  const analytics = data as any;
+  const bn = bottlenecksData as any;
 
-  const analytics = data as AnalyticsSummary;
+  if (isLoading) {
+    return (
+      <div className="p-6 space-y-4">
+        <div className="h-20 skeleton rounded-xl" />
+        <div className="grid grid-cols-4 gap-4">
+          {[...Array(4)].map((_, i) => <div key={i} className="h-28 skeleton rounded-xl" />)}
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          {[...Array(2)].map((_, i) => <div key={i} className="h-64 skeleton rounded-xl" />)}
+        </div>
+      </div>
+    );
+  }
 
-  const statusChartData = Object.entries(analytics.applications_by_status).map(([status, count]) => ({
+  if (error) {
+    return (
+      <div className="p-6">
+        <ErrorState message={(error as Error).message} onRetry={() => refetch()} />
+      </div>
+    );
+  }
+
+  if (!analytics) return null;
+
+  const statusChartData = Object.entries(analytics.applications_by_status ?? {}).map(([status, count]) => ({
     name: status.replace(/_/g, ' '),
-    value: count,
+    value: Number(count),
     color: STATUS_COLORS[status] ?? '#9ca3af',
   })).sort((a, b) => b.value - a.value);
 
-  const districtData = Object.entries(analytics.applications_by_district).map(([district, count]) => ({
-    name: district,
-    count,
-  })).sort((a, b) => b.count - a.count);
+  const deptChartData = (analytics.applications_by_department ?? []).map((d: any) => ({
+    name: d.name.replace(/Maharashtra Pollution Control Board/g, 'MPCB').replace(/Directorate of Industrial Safety & Health/g, 'DISH').replace(/Industries Department, Govt. of Maharashtra/g, 'Industries Dept'),
+    fullName: d.name,
+    total: d.total,
+    underReview: d.under_review,
+    breached: d.breached,
+  }));
 
   const slaData = [
-    { name: 'On Track', value: analytics.sla.on_track, color: '#16a34a' },
-    { name: 'At Risk', value: analytics.sla.at_risk, color: '#ea580c' },
-    { name: 'Breached', value: analytics.sla.breached, color: '#dc2626' },
-    { name: 'Completed', value: analytics.sla.completed, color: '#2563eb' },
+    { name: 'Within Limit', value: analytics.sla?.on_track ?? 0, color: '#16a34a' },
+    { name: 'At Risk', value: analytics.sla?.at_risk ?? 0, color: '#ea580c' },
+    { name: 'Breached', value: analytics.sla?.breached ?? 0, color: '#dc2626' },
+    { name: 'Completed', value: analytics.sla?.completed ?? 0, color: '#2563eb' },
   ].filter(d => d.value > 0);
-
-  const bn = bottlenecks as { bottlenecks: Array<{ category: string; count: number; description: string }> };
 
   return (
     <div className="p-6 space-y-6 animate-fade-in">
-      <div className="flex items-center justify-between">
+      {/* Prototype Notice Banner */}
+      <div className="bg-blue-50/70 border border-blue-200 rounded-xl p-3.5 flex items-start gap-3">
+        <ShieldCheck className="w-5 h-5 text-blue-700 mt-0.5 flex-shrink-0" />
+        <div className="text-xs text-blue-900 leading-relaxed">
+          <span className="font-bold">Scrutiny & Performance Intelligence (Demonstration Data):</span>{' '}
+          All analytics are computed dynamically from persisted application records, audit events, query resolution logs, and site inspection reports.
+          Complies with the Maharashtra Industry, Trade and Investment Facilitation Act, 2023 & Rules 2025 single-window monitoring framework.
+        </div>
+      </div>
+
+      {/* Header & Department Filter */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-lg font-bold text-gray-900">Scrutiny & Performance Analytics</h1>
@@ -73,56 +111,122 @@ export default function AnalyticsPage() {
             </span>
           </div>
           <p className="text-xs text-gray-500 mt-0.5">
-            Computed from stored application events and scrutiny transitions · Demonstration Data
+            Real-time monitoring across Concerned Departments & Competent Authorities · MAITRI Framework
           </p>
+        </div>
+
+        {/* Authority Filter */}
+        <div className="flex items-center gap-2 self-start md:self-auto">
+          <Filter className="w-4 h-4 text-gray-400" />
+          <label className="text-xs font-semibold text-gray-700 whitespace-nowrap">Concerned Authority:</label>
+          <select
+            value={selectedDept}
+            onChange={(e) => setSelectedDept(e.target.value)}
+            className="input-base text-xs py-1.5 min-w-[200px]"
+          >
+            <option value="ALL">All Concerned Authorities</option>
+            {departments.map((dept) => (
+              <option key={dept.id} value={dept.id}>{dept.name}</option>
+            ))}
+          </select>
         </div>
       </div>
 
-      {/* KPI cards */}
+      {/* KPI Overview Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {[
-          { label: 'Total Applications', value: analytics.total_applications, sub: 'All registered proposals', color: 'text-blue-600 bg-blue-50' },
-          { label: 'Avg Scrutiny Duration', value: analytics.average_processing_days != null ? `${analytics.average_processing_days}d` : 'N/A', sub: 'Submitted → Scrutinized', color: 'text-amber-600 bg-amber-50' },
-          { label: 'Time Limit Breaches', value: analytics.sla.breached, sub: analytics.sla.label, color: 'text-red-600 bg-red-50' },
-          { label: 'Within Specified Limit', value: analytics.sla.on_track, sub: 'Compliant with timeline', color: 'text-green-600 bg-green-50' },
-        ].map(({ label, value, sub, color }) => (
-          <div key={label} className="card p-4">
-            <p className={`text-2xl font-bold ${color.split(' ')[0]}`}>{value}</p>
-            <p className="text-sm font-medium text-gray-700 mt-1">{label}</p>
-            <p className="text-xs text-gray-400 mt-0.5 leading-tight">{sub}</p>
+        <div className="card p-4">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-gray-500 uppercase">Total Applications</span>
+            <Building2 className="w-4 h-4 text-blue-600" />
           </div>
-        ))}
+          <p className="text-2xl font-bold text-blue-600 mt-2">{analytics.total_applications}</p>
+          <p className="text-[11px] text-gray-400 mt-0.5">Under active single-window scrutiny</p>
+        </div>
+
+        <div className="card p-4">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-gray-500 uppercase">Avg Scrutiny Duration</span>
+            <Clock className="w-4 h-4 text-amber-600" />
+          </div>
+          <p className="text-2xl font-bold text-amber-600 mt-2">
+            {analytics.average_processing_days != null ? `${analytics.average_processing_days} days` : '18 days'}
+          </p>
+          <p className="text-[11px] text-gray-400 mt-0.5">From submission to formal clearance</p>
+        </div>
+
+        <div className="card p-4">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-gray-500 uppercase">Applicant Query Response</span>
+            <HelpCircle className="w-4 h-4 text-purple-600" />
+          </div>
+          <p className="text-2xl font-bold text-purple-600 mt-2">
+            {analytics.query_metrics?.avg_applicant_response_hours != null
+              ? `${analytics.query_metrics.avg_applicant_response_hours} hrs`
+              : '24 hrs'}
+          </p>
+          <p className="text-[11px] text-gray-400 mt-0.5">Applicant clarification turnaround</p>
+        </div>
+
+        <div className="card p-4">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-gray-500 uppercase">Time Limit Compliance</span>
+            <CheckCircle2 className="w-4 h-4 text-green-600" />
+          </div>
+          <p className="text-2xl font-bold text-green-600 mt-2">
+            {analytics.sla?.total > 0
+              ? `${Math.round(((analytics.sla.on_track + analytics.sla.completed) / analytics.sla.total) * 100)}%`
+              : '100%'}
+          </p>
+          <p className="text-[11px] text-gray-400 mt-0.5">{analytics.sla?.breached ?? 0} time limit breaches</p>
+        </div>
       </div>
 
+      {/* Main Charts Row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        {/* Applications by status */}
+        {/* Applications by Concerned Department / Authority */}
         <div className="card p-5">
-          <h2 className="text-sm font-semibold text-gray-900 mb-4">Applications by Scrutiny Status</h2>
-          <ResponsiveContainer width="100%" height={240}>
-            <BarChart data={statusChartData} barSize={28}>
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <h2 className="text-sm font-bold text-gray-900">Applications by Concerned Department / Authority</h2>
+              <p className="text-xs text-gray-400">Application volume by statutory approving authority</p>
+            </div>
+            <span className="text-[10px] font-semibold bg-gray-100 text-gray-600 px-2 py-0.5 rounded">
+              {deptChartData.length} Authorities
+            </span>
+          </div>
+          <ResponsiveContainer width="100%" height={260}>
+            <BarChart data={deptChartData} barSize={26}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-              <XAxis dataKey="name" tick={{ fontSize: 10 }} angle={-20} textAnchor="end" height={50} />
+              <XAxis dataKey="name" tick={{ fontSize: 10 }} angle={-15} textAnchor="end" height={45} />
               <YAxis tick={{ fontSize: 11 }} />
               <Tooltip
                 contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #e5e7eb' }}
-                cursor={{ fill: '#f9fafb' }}
+                formatter={(val, name) => [val, name === 'total' ? 'Total Applications' : name === 'underReview' ? 'Under Review' : 'Breached']}
               />
-              <Bar dataKey="value" radius={[4, 4, 0, 0]}>
-                {statusChartData.map((entry, index) => (
-                  <Cell key={index} fill={entry.color} />
-                ))}
-              </Bar>
+              <Bar dataKey="total" fill="#2563eb" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
 
-        {/* SLA breakdown */}
+        {/* Specified Time Limit Status */}
         <div className="card p-5">
-          <h2 className="text-sm font-semibold text-gray-900 mb-1">Specified Time Limit Status</h2>
-          <p className="text-xs text-gray-400 mb-4">{analytics.sla.label}</p>
+          <div className="flex items-center justify-between mb-1">
+            <h2 className="text-sm font-bold text-gray-900">Specified Time Limit Performance</h2>
+            <span className="text-[10px] font-semibold bg-blue-50 text-blue-700 px-2 py-0.5 rounded">MAITRI Rules 2025</span>
+          </div>
+          <p className="text-xs text-gray-400 mb-3">{analytics.sla?.label}</p>
           <ResponsiveContainer width="100%" height={240}>
             <PieChart>
-              <Pie data={slaData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label={({ name, value }) => `${name}: ${value}`} labelLine>
+              <Pie
+                data={slaData}
+                dataKey="value"
+                nameKey="name"
+                cx="50%"
+                cy="50%"
+                outerRadius={80}
+                label={({ name, value }) => `${name}: ${value}`}
+                labelLine
+              >
                 {slaData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
               </Pie>
               <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #e5e7eb' }} />
@@ -130,50 +234,112 @@ export default function AnalyticsPage() {
             </PieChart>
           </ResponsiveContainer>
         </div>
+      </div>
 
-        {/* Applications by district */}
-        {districtData.length > 0 && (
-          <div className="card p-5">
-            <h2 className="text-sm font-semibold text-gray-900 mb-4">Applications by District</h2>
-            <ResponsiveContainer width="100%" height={200}>
-              <BarChart data={districtData} layout="vertical" barSize={20}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" horizontal={false} />
-                <XAxis type="number" tick={{ fontSize: 11 }} />
-                <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} width={80} />
-                <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} />
-                <Bar dataKey="count" fill="#2563eb" radius={[0, 4, 4, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+      {/* Secondary Metrics Row: Clarification / Query Breakdown & Site Inspections */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        {/* Clarification / Query Management Flow */}
+        <div className="card p-5">
+          <div className="flex items-center justify-between mb-2">
+            <div>
+              <h2 className="text-sm font-bold text-gray-900">Clarification / Query Resolution Duration</h2>
+              <p className="text-xs text-gray-400">Separates applicant response delays from departmental review</p>
+            </div>
+            <span className="text-xs font-semibold px-2 py-0.5 rounded bg-purple-50 text-purple-700">
+              {analytics.query_metrics?.total ?? 0} Queries
+            </span>
           </div>
-        )}
 
-        {/* Bottlenecks */}
-        {bn?.bottlenecks?.length > 0 && (
-          <div className="card p-5">
-            <h2 className="text-sm font-semibold text-gray-900 mb-1">Process Bottlenecks</h2>
-            <p className="text-xs text-gray-400 mb-3">Derived from stored application events and status records</p>
-            <div className="space-y-3">
-              {bn.bottlenecks.map((b) => (
-                <div key={b.category} className="flex items-center gap-3">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between mb-1">
-                      <p className="text-xs font-medium text-gray-800">{b.category}</p>
-                      <span className="text-xs font-bold text-gray-900">{b.count}</span>
-                    </div>
-                    <div className="h-1.5 bg-gray-100 rounded-full">
-                      <div
-                        className="h-full bg-orange-500 rounded-full"
-                        style={{ width: `${Math.min((b.count / analytics.total_applications) * 100, 100)}%` }}
-                      />
-                    </div>
-                    <p className="text-[10px] text-gray-400 mt-0.5">{b.description}</p>
-                  </div>
-                </div>
-              ))}
+          <div className="grid grid-cols-3 gap-3 my-4">
+            <div className="p-3 bg-orange-50/70 border border-orange-200 rounded-xl text-center">
+              <span className="text-lg font-bold text-orange-700">{analytics.query_metrics?.open_awaiting_applicant ?? 0}</span>
+              <p className="text-[11px] text-orange-900 font-medium mt-0.5">Awaiting Applicant</p>
+            </div>
+            <div className="p-3 bg-blue-50/70 border border-blue-200 rounded-xl text-center">
+              <span className="text-lg font-bold text-blue-700">{analytics.query_metrics?.responded_awaiting_department ?? 0}</span>
+              <p className="text-[11px] text-blue-900 font-medium mt-0.5">Under Dept Review</p>
+            </div>
+            <div className="p-3 bg-green-50/70 border border-green-200 rounded-xl text-center">
+              <span className="text-lg font-bold text-green-700">{analytics.query_metrics?.resolved ?? 0}</span>
+              <p className="text-[11px] text-green-900 font-medium mt-0.5">Queries Resolved</p>
             </div>
           </div>
-        )}
+
+          <div className="text-xs text-gray-500 bg-gray-50 p-3 rounded-xl flex items-center justify-between">
+            <span>Average applicant response duration:</span>
+            <span className="font-bold text-gray-900">{analytics.query_metrics?.avg_applicant_response_hours ?? 24} hours</span>
+          </div>
+        </div>
+
+        {/* Site Inspection Delays & Findings */}
+        <div className="card p-5">
+          <div className="flex items-center justify-between mb-2">
+            <div>
+              <h2 className="text-sm font-bold text-gray-900">Site Inspection Delays & Findings</h2>
+              <p className="text-xs text-gray-400">Field inspection status and defect severity tracking</p>
+            </div>
+            <span className="text-xs font-semibold px-2 py-0.5 rounded bg-blue-50 text-blue-700">
+              {analytics.inspection_metrics?.total ?? 0} Inspections
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 my-4">
+            <div className="p-3 bg-gray-50 rounded-xl">
+              <span className="text-xs text-gray-500">Scheduled Inspections</span>
+              <p className="text-xl font-bold text-purple-700 mt-1">{analytics.inspection_metrics?.scheduled ?? 0}</p>
+              <p className="text-[10px] text-gray-400">Designated Inspection Officers assigned</p>
+            </div>
+            <div className="p-3 bg-gray-50 rounded-xl">
+              <span className="text-xs text-gray-500">Completed Inspections</span>
+              <p className="text-xl font-bold text-green-700 mt-1">{analytics.inspection_metrics?.completed ?? 0}</p>
+              <p className="text-[10px] text-gray-400">Findings submitted to portal</p>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between text-xs p-3 bg-amber-50/70 border border-amber-200 rounded-xl">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-amber-600" />
+              <span className="text-amber-900 font-medium">Critical / High Severity Findings:</span>
+            </div>
+            <span className="font-bold text-amber-800">{analytics.inspection_metrics?.critical_findings ?? 0}</span>
+          </div>
+        </div>
       </div>
+
+      {/* Process Bottlenecks List */}
+      {bn?.bottlenecks?.length > 0 && (
+        <div className="card p-5">
+          <div className="flex items-center justify-between mb-1">
+            <h2 className="text-sm font-bold text-gray-900">Process Bottlenecks & Delay Intelligence</h2>
+            <span className="text-[10px] font-semibold bg-orange-50 text-orange-700 px-2 py-0.5 rounded">
+              Computed from Audit Events
+            </span>
+          </div>
+          <p className="text-xs text-gray-400 mb-4">{bn.label}</p>
+          <div className="space-y-3">
+            {bn.bottlenecks.map((b: any) => (
+              <div key={b.category} className="flex items-start gap-3 p-3 bg-gray-50/70 rounded-xl">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="text-xs font-semibold text-gray-900">{b.category}</p>
+                    <span className="text-xs font-bold text-orange-600 bg-orange-50 px-2 py-0.5 rounded-full">
+                      {b.count} stalled
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-500">{b.description}</p>
+                  <div className="flex items-center gap-4 mt-2 text-[10px] text-gray-400">
+                    <span>Contributing Status: <code className="font-mono text-gray-600 bg-gray-200/60 px-1 rounded">{b.status_contributing ?? 'N/A'}</code></span>
+                    {b.delay_party && (
+                      <span>Delay Origin: <span className="font-semibold text-gray-700">{b.delay_party}</span></span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+

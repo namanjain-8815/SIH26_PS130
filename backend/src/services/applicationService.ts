@@ -1,5 +1,11 @@
 import { prisma } from '../lib/prisma';
 import { NotFoundError, ForbiddenError } from '../lib/errors';
+import { mockGovernmentAdapter } from '../adapters/MockGovernmentAdapter';
+import {
+  notifyApplicationSubmitted,
+  notifyDecisionRecorded,
+  notifyEmpoweredCommitteeEscalation,
+} from './notificationService';
 
 export async function listApplications(projectId: string) {
   return prisma.application.findMany({
@@ -69,27 +75,50 @@ export async function updateApplicationStatus(id: string, status: string, actorI
   return prisma.$transaction(async (tx) => {
     const app = await tx.application.findUnique({
       where: { id },
-      include: { project_approval: true },
+      include: {
+        project_approval: {
+          include: {
+            approval_type: true,
+            project: { include: { organization: true } },
+          },
+        },
+        department: true,
+      },
     });
     if (!app) throw new NotFoundError('Application not found');
 
-    if (actorId && ['APPROVED', 'REJECTED'].includes(status)) {
+    if (actorId) {
       const actor = await tx.user.findUnique({ where: { id: actorId } });
       if (actor) {
-        if (actor.role === 'NODAL') {
-          throw new ForbiddenError(
-            'MAITRI Nodal Officers provide inter-department facilitation and monitoring; statutory approval decisions must be taken by the Concerned Competent Authority Officer.'
-          );
+        if (['APPROVED', 'REJECTED'].includes(status)) {
+          if (actor.role === 'ENTREPRENEUR' || actor.role === 'MANAGER') {
+            throw new ForbiddenError(
+              'Applicant / Investor cannot take statutory decisions on their own applications. Decisions must be taken by the Concerned Competent Authority Officer.'
+            );
+          }
+          if (actor.role === 'NODAL') {
+            throw new ForbiddenError(
+              'MAITRI Nodal Officers provide inter-department facilitation and monitoring; statutory approval decisions must be taken by the Concerned Competent Authority Officer.'
+            );
+          }
+          if (actor.role === 'INSPECTOR') {
+            throw new ForbiddenError(
+              'Designated Inspection Officers record inspection findings; statutory approval decisions must be taken by the Competent Authority Officer.'
+            );
+          }
+          if (actor.role === 'OFFICER' && actor.department_id && app.department_id && actor.department_id !== app.department_id) {
+            throw new ForbiddenError(
+              'Cross-department jurisdiction violation: Only an officer of the Concerned Department / Authority can record approval or rejection.'
+            );
+          }
         }
-        if (actor.role === 'INSPECTOR') {
-          throw new ForbiddenError(
-            'Designated Inspection Officers record inspection findings; statutory approval decisions must be taken by the Competent Authority Officer.'
-          );
-        }
-        if (actor.role === 'OFFICER' && actor.department_id && app.department_id && actor.department_id !== app.department_id) {
-          throw new ForbiddenError(
-            'Cross-department jurisdiction violation: Only an officer of the Concerned Department / Authority can record approval or rejection.'
-          );
+
+        if (['UNDER_REVIEW', 'INSPECTION_SCHEDULED'].includes(status)) {
+          if (actor.role === 'ENTREPRENEUR' || actor.role === 'MANAGER') {
+            throw new ForbiddenError(
+              'Scrutiny and inspection scheduling can only be initiated by the Concerned Competent Authority or Designated Inspection Officer.'
+            );
+          }
         }
       }
     }
@@ -122,6 +151,39 @@ export async function updateApplicationStatus(id: string, status: string, actorI
     await tx.applicationEvent.create({
       data: { application_id: id, actor_id: actorId, event_type: `status_changed:${status}`, notes },
     });
+
+    // Simulated external gateway sync on submission (per plan §37)
+    if (status === 'SUBMITTED') {
+      const simGateway = await mockGovernmentAdapter.submitApplication(id);
+      await tx.applicationEvent.create({
+        data: {
+          application_id: id,
+          actor_id: actorId,
+          event_type: 'external_gateway_sync',
+          notes: `Simulated integration: Application forwarded to Concerned Authority gateway (Reference: ${simGateway.referenceId})`,
+        },
+      });
+    }
+
+    // Role-aware notification dispatching
+    if (status === 'SUBMITTED') {
+      await notifyApplicationSubmitted(
+        app.application_number,
+        app.project_approval?.approval_type?.name ?? 'Permission',
+        app.department_id,
+        app.project_approval?.project?.org_id
+      );
+    } else if (status === 'APPROVED' || status === 'REJECTED') {
+      await notifyDecisionRecorded(
+        app.application_number,
+        app.project_approval?.approval_type?.name ?? 'Permission',
+        status as 'APPROVED' | 'REJECTED',
+        app.department?.name ?? 'Concerned Competent Authority',
+        app.project_approval?.project?.org_id,
+        notes
+      );
+    }
+
     return updated;
   });
 }
@@ -140,10 +202,20 @@ export async function recordCoordinationNote(
   notes: string,
   eventType: string = 'nodal_coordination_note'
 ) {
-  const application = await prisma.application.findUnique({ where: { id: applicationId } });
+  const application = await prisma.application.findUnique({
+    where: { id: applicationId },
+    include: {
+      project_approval: {
+        include: {
+          approval_type: true,
+          project: { include: { organization: true } },
+        },
+      },
+    },
+  });
   if (!application) throw new NotFoundError('Application not found');
 
-  return prisma.applicationEvent.create({
+  const event = await prisma.applicationEvent.create({
     data: {
       application_id: applicationId,
       actor_id: actorId,
@@ -151,6 +223,67 @@ export async function recordCoordinationNote(
       notes,
     },
   });
+
+  if (eventType === 'escalated_to_empowered_committee') {
+    const actor = await prisma.user.findUnique({ where: { id: actorId } });
+    await notifyEmpoweredCommitteeEscalation(
+      application.application_number,
+      application.project_approval?.approval_type?.name ?? 'Permission',
+      application.department_id,
+      application.project_approval?.project?.org_id,
+      actor?.name ?? 'MAITRI Nodal Agency',
+      notes
+    );
+  }
+
+  return event;
+}
+
+export async function escalateApplication(applicationId: string, actorId: string, reason?: string) {
+  const application = await prisma.application.findUnique({
+    where: { id: applicationId },
+    include: {
+      project_approval: {
+        include: {
+          approval_type: true,
+          project: { include: { organization: true } },
+        },
+      },
+      department: true,
+    },
+  });
+  if (!application) throw new NotFoundError('Application not found');
+
+  const actor = await prisma.user.findUnique({ where: { id: actorId } });
+  const escalationNote =
+    reason ||
+    'Application exceeded specified statutory time limit. Transferred / Escalated to the Empowered Committee under Maharashtra Industry, Trade and Investment Facilitation Act, 2023 for statutory resolution.';
+
+  const event = await prisma.applicationEvent.create({
+    data: {
+      application_id: applicationId,
+      actor_id: actorId,
+      event_type: 'escalated_to_empowered_committee',
+      notes: escalationNote,
+    },
+  });
+
+  await notifyEmpoweredCommitteeEscalation(
+    application.application_number,
+    application.project_approval?.approval_type?.name ?? 'Permission',
+    application.department_id,
+    application.project_approval?.project?.org_id,
+    actor?.name ?? 'MAITRI Nodal Agency',
+    escalationNote
+  );
+
+  return {
+    success: true,
+    application_id: applicationId,
+    application_number: application.application_number,
+    event,
+    message: 'Application successfully transferred to the Empowered Committee under MAITRI Rules.',
+  };
 }
 
 export async function attachDocument(applicationId: string, documentId: string) {
@@ -293,3 +426,10 @@ export async function runReadinessCheck(applicationId: string) {
       : 'Platform readiness check failed — please resolve all issues before submission.',
   };
 }
+
+export async function getSimulatedGatewayStatus(applicationId: string) {
+  const application = await prisma.application.findUnique({ where: { id: applicationId } });
+  if (!application) throw new NotFoundError('Application not found');
+  return mockGovernmentAdapter.getApplicationStatus(applicationId);
+}
+

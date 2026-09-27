@@ -14,6 +14,7 @@ import {
   Files,
   ClipboardCheck,
   Calendar,
+  Gift,
   Bell,
   Settings,
   LogOut,
@@ -22,6 +23,9 @@ import {
   Sparkles,
 } from 'lucide-react';
 
+import { AuthLoadingState, PermissionDeniedState } from '@/components/ui/States';
+import { BhashiniSeamButton } from '@/components/ui/BhashiniSeam';
+
 const NAV = [
   { href: '/app/dashboard',   label: 'Dashboard',                 icon: LayoutDashboard },
   { href: '/app/projects',    label: 'Investment Proposals',      icon: FolderKanban },
@@ -29,23 +33,40 @@ const NAV = [
   { href: '/app/documents',   label: 'Document Vault',            icon: Files },
   { href: '/app/inspections', label: 'Site Inspections',          icon: ClipboardCheck },
   { href: '/app/compliance',  label: 'Compliance & Renewals',     icon: Calendar },
+  { href: '/app/incentives',  label: 'Incentives & Schemes',      icon: Gift },
   { href: '/app/notifications',label: 'Notifications',            icon: Bell, badge: true },
 ];
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, logout } = useAuth();
+  const { user, loading, logout } = useAuth();
 
   const { data: unread } = useQuery({
     queryKey: ['notifications-unread'],
     queryFn: () => notificationsApi.unreadCount(),
     refetchInterval: 60_000,
+    enabled: !!user,
   });
 
   function handleLogout() {
     logout();
     router.push('/login');
+  }
+
+  if (loading) {
+    return <AuthLoadingState message="Verifying Single Window credentials..." />;
+  }
+
+  if (!user) {
+    return (
+      <PermissionDeniedState
+        title="Authentication Required"
+        description="Please sign in to access your investment proposals and Single Window permissions workspace."
+        returnHref="/login"
+        returnLabel="Sign In"
+      />
+    );
   }
 
   return (
@@ -122,8 +143,30 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       </aside>
 
       {/* Main content */}
-      <main className="flex-1 overflow-y-auto">
-        {children}
+      <main className="flex-1 overflow-y-auto flex flex-col">
+        {/* Top Context Header Bar */}
+        <header className="bg-white border-b border-gray-200 px-6 py-2.5 flex items-center justify-between flex-shrink-0 z-10">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 px-3 py-1 bg-primary-50 border border-primary-200/80 rounded-xl text-primary-900">
+              <Building2 className="w-4 h-4 text-primary-700 flex-shrink-0" />
+              <div className="text-xs">
+                <span className="font-semibold text-gray-900">Applicant Entity: </span>
+                <span className="text-primary-800 font-bold">ABC Foods Pvt Ltd</span>
+                <span className="text-gray-400 mx-1.5">|</span>
+                <span className="text-gray-600 font-medium">{formatRole(user.role)}</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2.5">
+            <BhashiniSeamButton />
+            <div className="flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 border border-amber-200 rounded-lg text-[10px] font-bold text-amber-800">
+              <span>PROTOTYPE / DEMO DATA</span>
+            </div>
+          </div>
+        </header>
+
+        <div className="flex-1 p-6">{children}</div>
       </main>
     </div>
   );
