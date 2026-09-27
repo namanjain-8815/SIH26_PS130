@@ -139,9 +139,16 @@ export async function updateInspection(
 
 export async function recordFinding(
   inspectionId: string,
-  data: { severity: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL'; description: string; corrective_action?: string }
+  data: { severity: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL'; description: string; corrective_action?: string; status?: string }
 ) {
-  return prisma.inspectionFinding.create({ data: { inspection_id: inspectionId, ...data } });
+  const sanitized = {
+    inspection_id: inspectionId,
+    severity: data.severity || 'LOW',
+    description: data.description || '',
+    corrective_action: data.corrective_action || null,
+    status: data.status || 'OPEN',
+  };
+  return prisma.inspectionFinding.create({ data: sanitized });
 }
 
 export async function updateFinding(

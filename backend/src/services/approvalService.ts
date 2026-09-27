@@ -88,11 +88,26 @@ export async function getProjectApprovalDetail(projectApprovalId: string) {
     pa.project.project_approvals.map((p) => [p.approval_type_id, p])
   );
 
-  const prerequisites = pa.approval_type.dependent_on.map((dep) => {
+  const [dependentOn, prerequisiteFor] = await Promise.all([
+    pa.approval_type.dependent_on
+      ? Promise.resolve(pa.approval_type.dependent_on)
+      : prisma.approvalDependency.findMany({
+          where: { dependent_approval_type_id: pa.approval_type_id },
+          include: { prerequisite_approval: true, prerequisite_approval_type: true },
+        }),
+    pa.approval_type.prerequisite_for
+      ? Promise.resolve(pa.approval_type.prerequisite_for)
+      : prisma.approvalDependency.findMany({
+          where: { prerequisite_approval_type_id: pa.approval_type_id },
+          include: { dependent_approval: true, dependent_approval_type: true },
+        }),
+  ]);
+
+  const prerequisites = (dependentOn || []).map((dep: any) => {
     const prereqPA = paByTypeId.get(dep.prerequisite_approval_type_id);
     return {
       approval_type_id: dep.prerequisite_approval_type_id,
-      name: dep.prerequisite_approval.name,
+      name: dep.prerequisite_approval?.name || dep.prerequisite_approval_type?.name || 'Prerequisite Approval',
       dependency_type: dep.dependency_type,
       status: prereqPA?.status ?? 'NOT_IN_PROJECT',
       project_approval_id: prereqPA?.id ?? null,
@@ -100,11 +115,11 @@ export async function getProjectApprovalDetail(projectApprovalId: string) {
   });
 
   // 6. Downstream — what this approval unlocks
-  const downstream = pa.approval_type.prerequisite_for.map((dep) => {
+  const downstream = (prerequisiteFor || []).map((dep: any) => {
     const depPA = paByTypeId.get(dep.dependent_approval_type_id);
     return {
       approval_type_id: dep.dependent_approval_type_id,
-      name: dep.dependent_approval.name,
+      name: dep.dependent_approval?.name || dep.dependent_approval_type?.name || 'Dependent Approval',
       dependency_type: dep.dependency_type,
       status: depPA?.status ?? 'NOT_IN_PROJECT',
       project_approval_id: depPA?.id ?? null,
@@ -112,7 +127,7 @@ export async function getProjectApprovalDetail(projectApprovalId: string) {
   });
 
   // 8. SLA
-  const slaPolicy = pa.approval_type.sla_policies[0];
+  const slaPolicy = pa.approval_type.sla_policies?.[0];
   const slaInstance = pa.application?.sla_instance;
   const now = new Date();
   let timeRemaining: string | null = null;
@@ -156,6 +171,7 @@ export async function getProjectApprovalDetail(projectApprovalId: string) {
       source_reference: pa.approval_type.source_reference,
       requires_inspection: pa.approval_type.requires_inspection,
       renewal_period_days: pa.approval_type.renewal_period_days,
+      authority: pa.approval_type.authority,
     },
     // 2. Why required?
     applicability_reason: pa.applicability_reason,

@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import Link from 'next/navigation';
+import Link from 'next/link';
 import {
   applicationsApi,
   queriesApi,

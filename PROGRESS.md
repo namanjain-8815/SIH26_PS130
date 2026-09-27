@@ -1,5 +1,75 @@
 # Project Progress
 
+## Phase 11 Final Integration & Rehearsal (COMPLETED ✅)
+- **Status**: Complete & Verified (Ready for Manual Demo Recording).
+- **Scope & Verification**:
+  - Validated complete end-to-end multi-role journey from the running live application:
+    1. **Applicant / Investor (`entrepreneur@demo.local`)**:
+       - Login & Profile context (`ABC Foods Pvt Ltd`, `proj-abc-foods-001`).
+       - Project Control Centre with investment details, blockers, and readiness %.
+       - Permissions & Approvals roadmap with category grouping.
+       - Parallel & Dependency DAG view with `can_start_now` prerequisites detection.
+       - "Why is this required?" statutory explainability & issuing authority details.
+       - Document Vault with expiration tracking and readiness assessment.
+       - Pre-submission readiness validation check.
+       - Application Workspace with chronological timeline and event stream.
+       - Post-Approval Compliance & Renewals schedule with periodic auto-renewal.
+       - Promotional Schemes & Fiscal Incentives discovery with eligibility matching.
+    2. **Competent Authority Officer — MIDC (`officer@demo.local`)**:
+       - Shared government shell with dynamic department scoping (`MIDC`).
+       - Scoped work queue with application scrutiny, query raising, response review, and query resolution.
+       - Clearance grant and rejection modals with statutory reasons and conditions.
+    3. **Competent Authority Officer — MPCB (`pcb.officer@demo.local`)**:
+       - Shared government shell operating seamlessly with MPCB department context (`dept-pcb`).
+       - Work queue scoped to MPCB permissions (Consent to Establish).
+    4. **MAITRI Nodal Officer (`nodal@demo.local`)**:
+       - Cross-department Single Window analytics and Specified Time Limit monitor.
+       - Inter-department coordination notes recording on applications.
+       - Controlled statutory transfer to Empowered Committee under Section 10 of MAITRI Act 2023.
+    5. **Designated Inspection Officer (`inspector@demo.local`)**:
+       - Site inspection scheduling and recording verified site findings.
+    6. **System Administrator (`admin@demo.local`)**:
+       - Platform governance consoles: Permissions Catalogue, Applicability Rules, Permission Dependencies, Specified Time Policies, Schemes, and JSON Before/After Audit Diffs.
+    7. **Simulated Integration Boundaries & Prototype Honesty**:
+       - External gateway status checks explicitly labeled `"Simulated integration"` with `is_simulated: true`.
+       - Strict RBAC enforcement blocking unauthorized cross-department or non-officer actions.
+
+- **Issues Found & Genuine Integration Fixes Made**:
+  1. **Frontend Navigation Link Import** in [frontend/src/app/app/applications/[id]/page.tsx](file:///c:/Users/naman/OneDrive/Desktop/SIH26_PS130/frontend/src/app/app/applications/%5Bid%5D/page.tsx):
+     - *Issue*: `import Link from 'next/navigation'` caused Next.js build compilation failure because `Link` belongs to `next/link`.
+     - *Fix*: Changed import to `import Link from 'next/link'`.
+  2. **Approval Dependencies Relation Hydration & Fault Tolerance** in [backend/src/lib/supabaseDb.ts](file:///c:/Users/naman/OneDrive/Desktop/SIH26_PS130/backend/src/lib/supabaseDb.ts) & [backend/src/services/approvalService.ts](file:///c:/Users/naman/OneDrive/Desktop/SIH26_PS130/backend/src/services/approvalService.ts):
+     - *Issue*: `GET /api/project-approvals/:id` threw 500 when `dependent_on` relation was missing in `RELATION_MAP.ApprovalType`, and failed when dependencies were empty.
+     - *Fix*: Added `prerequisite_for` and `dependent_on` relations to `ApprovalType` in `RELATION_MAP`; added direct database query fallbacks and null-safe property access in `approvalService.ts`; ensured `approval_type.authority` is explicitly returned.
+  3. **InspectionFinding Column Sanitization** in [backend/src/services/inspectionService.ts](file:///c:/Users/naman/OneDrive/Desktop/SIH26_PS130/backend/src/services/inspectionService.ts):
+     - *Issue*: `POST /api/inspections/:id/findings` failed if request body contained non-column fields like `title`.
+     - *Fix*: Sanitized `recordFinding` input to strictly persist supported schema columns (`inspection_id`, `severity`, `description`, `corrective_action`, `status`).
+
+- **Files Changed**:
+  - `frontend/src/app/app/applications/[id]/page.tsx`
+  - `backend/src/lib/supabaseDb.ts`
+  - `backend/src/services/approvalService.ts`
+  - `backend/src/services/inspectionService.ts`
+  - `backend/src/tests/integration/phase11.integration.test.ts`
+  - `PROGRESS.md`
+
+- **Final Test & Build Verification Results**:
+  - **Phase 11 End-to-End Integration Suite (`backend/src/tests/integration/phase11.integration.test.ts`)**: **27/27 tests passed (100% pass rate)**.
+  - **Full Backend Test Suite (`npm test`)**: **110/110 tests passed across all 15 suites (100% pass rate, 0 failures)**.
+  - **Frontend Production Build (`npm run build`)**: **Compiled successfully with zero errors across all 24 routes** (optimized static & dynamic pages, 0 type errors).
+  - **Database & Schema Status**: Zero schema migrations required; existing 22 tables and relations 100% preserved; persisted demo data fully intact.
+
+- **Exact Final State for Manual Demo Recording**:
+  - Backend running at `http://localhost:4000` (live Express + Supabase Postgres).
+  - Frontend running at `http://localhost:3000` (Next.js 14 App Router).
+  - Pre-seeded ABC Foods Demo Data (`proj-abc-foods-001`, `app-midc-001`, `app-pcb-001`, `pa-pollution`, `pa-factory`) ready for 3–4 minute walkthrough covering:
+    - Step 1: Investor Login (`entrepreneur@demo.local`) → ABC Foods Project Control Centre → Approvals Roadmap & Dependency DAG → Pre-submission validation.
+    - Step 2: Application Details (`app-midc-001`) → Clarification query response → Document Vault.
+    - Step 3: MIDC Competent Authority Officer (`officer@demo.local`) → Scoped work queue → Review response & Resolve query.
+    - Step 4: MPCB Competent Authority Officer (`pcb.officer@demo.local`) → Same government shell with MPCB department context.
+    - Step 5: MAITRI Nodal Officer (`nodal@demo.local`) → Single Window Analytics → Specified Time Limit monitor → Statutory transfer under Section 10 to Empowered Committee.
+    - Step 6: System Administrator (`admin@demo.local`) → Permissions catalogue, rules, dependencies, and audit diffs.
+
 ## Phase 10 Reliability, Security Authorization, Accessibility & Government UX Hardening (COMPLETED ✅)
 - **1. Backend Route Authorization Hardening & RBAC Enforcement**:
   - [backend/src/services/applicationService.ts](file:///c:/Users/naman/OneDrive/Desktop/SIH26_PS130/backend/src/services/applicationService.ts):
@@ -549,7 +619,6 @@ src/
 - Connection: ✅ Connected (Supabase HTTPS REST API via `@supabase/supabase-js`)
 - Schema: ✅ Applied (`backend/supabase_schema.sql`)
 - Seed: ✅ Complete (`npm run seed`)
-- Prisma: ❌ Removed (zero dependencies on `@prisma/client` or `prisma`)
 
 ## TypeScript Status
 - Backend: ✅ Zero errors (`npx tsc --noEmit` passes)
