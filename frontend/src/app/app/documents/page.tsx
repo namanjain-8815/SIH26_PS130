@@ -6,7 +6,8 @@ import { StatusBadge } from '@/components/ui/StatusBadge';
 import { EmptyState, ErrorState, Skeleton } from '@/components/ui/States';
 import { formatDate } from '@/lib/utils';
 import { useState } from 'react';
-import type { DocumentItem } from '@/types/api';
+import type { DocumentItem, DocumentPreValidationResult } from '@/types/api';
+import { DocumentPreValidationCard } from '@/components/documents/DocumentPreValidationCard';
 import {
   FileText,
   Upload,
@@ -38,6 +39,61 @@ export default function DocumentsPage() {
   const [replaceExpiryDate, setReplaceExpiryDate] = useState('');
 
   const [viewDocDetailId, setViewDocDetailId] = useState<string | null>(null);
+
+  // Pre-validation state
+  const [uploadValidation, setUploadValidation] = useState<DocumentPreValidationResult | null>(null);
+  const [isUploadValidating, setIsUploadValidating] = useState(false);
+
+  const [replaceValidation, setReplaceValidation] = useState<DocumentPreValidationResult | null>(null);
+  const [isReplaceValidating, setIsReplaceValidating] = useState(false);
+
+  const handleUploadFileSelected = async (file: File | null) => {
+    setUploadFile(file);
+    setUploadValidation(null);
+    if (!file || !uploadDocType) return;
+
+    setIsUploadValidating(true);
+    try {
+      const base64 = await fileToBase64(file);
+      const res = await documentsApi.preValidate({
+        document_type: uploadDocType,
+        file_name: file.name,
+        file_base64: base64,
+        size_bytes: file.size,
+        expiry_date: uploadExpiryDate || undefined,
+        project_id: DEMO_PROJECT_ID,
+      });
+      setUploadValidation(res);
+    } catch {
+      // Non-blocking
+    } finally {
+      setIsUploadValidating(false);
+    }
+  };
+
+  const handleReplaceFileSelected = async (file: File | null, docType: string) => {
+    setReplaceFile(file);
+    setReplaceValidation(null);
+    if (!file) return;
+
+    setIsReplaceValidating(true);
+    try {
+      const base64 = await fileToBase64(file);
+      const res = await documentsApi.preValidate({
+        document_type: docType,
+        file_name: file.name,
+        file_base64: base64,
+        size_bytes: file.size,
+        expiry_date: replaceExpiryDate || undefined,
+        project_id: DEMO_PROJECT_ID,
+      });
+      setReplaceValidation(res);
+    } catch {
+      // Non-blocking
+    } finally {
+      setIsReplaceValidating(false);
+    }
+  };
 
   const {
     data: docs,
@@ -265,10 +321,20 @@ export default function DocumentsPage() {
       {/* MODAL: Upload Document */}
       {showUploadModal && (
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 space-y-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6 space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-gray-100">
-              <h3 className="text-sm font-bold text-gray-900">Upload to Document Vault</h3>
-              <button onClick={() => setShowUploadModal(false)} className="text-gray-400 hover:text-gray-600 text-lg">
+              <div>
+                <h3 className="text-sm font-bold text-gray-900">Upload to Document Vault</h3>
+                <p className="text-xs text-gray-400">Statutory multi-tier pre-validation will be executed before attachment.</p>
+              </div>
+              <button
+                onClick={() => {
+                  setShowUploadModal(false);
+                  setUploadValidation(null);
+                  setUploadFile(null);
+                }}
+                className="text-gray-400 hover:text-gray-600 text-lg"
+              >
                 ×
               </button>
             </div>
@@ -278,16 +344,21 @@ export default function DocumentsPage() {
                 <input
                   type="text"
                   value={uploadDocType}
-                  onChange={(e) => setUploadDocType(e.target.value)}
-                  placeholder="e.g. Environmental Impact Assessment Report"
+                  onChange={(e) => {
+                    setUploadDocType(e.target.value);
+                    if (uploadFile) {
+                      handleUploadFileSelected(uploadFile);
+                    }
+                  }}
+                  placeholder="e.g. Company PAN Card, Lease Agreement / Land Title"
                   className="input-base text-xs mt-1"
                 />
               </div>
               <div>
-                <label className="font-semibold text-gray-700">File</label>
+                <label className="font-semibold text-gray-700">File (PDF, JPG, PNG)</label>
                 <input
                   type="file"
-                  onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
+                  onChange={(e) => handleUploadFileSelected(e.target.files?.[0] || null)}
                   className="mt-1 block w-full text-xs text-gray-500 file:mr-4 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-primary-50 file:text-primary-700 hover:file:bg-primary-100"
                 />
               </div>
@@ -300,9 +371,26 @@ export default function DocumentsPage() {
                   className="input-base text-xs mt-1"
                 />
               </div>
+
+              {/* Pre-validation feedback card */}
+              <DocumentPreValidationCard
+                result={uploadValidation}
+                isValidating={isUploadValidating}
+                onResetFile={() => {
+                  setUploadFile(null);
+                  setUploadValidation(null);
+                }}
+              />
             </div>
             <div className="pt-3 border-t border-gray-100 flex justify-end gap-2">
-              <button onClick={() => setShowUploadModal(false)} className="btn-secondary text-xs py-1.5">
+              <button
+                onClick={() => {
+                  setShowUploadModal(false);
+                  setUploadValidation(null);
+                  setUploadFile(null);
+                }}
+                className="btn-secondary text-xs py-1.5"
+              >
                 Cancel
               </button>
               <button
@@ -315,7 +403,13 @@ export default function DocumentsPage() {
                     });
                   }
                 }}
-                disabled={!uploadDocType || !uploadFile || uploadDoc.isPending}
+                disabled={
+                  !uploadDocType ||
+                  !uploadFile ||
+                  uploadDoc.isPending ||
+                  isUploadValidating ||
+                  (uploadValidation !== null && !uploadValidation.accepted)
+                }
                 className="btn-primary text-xs py-1.5"
               >
                 {uploadDoc.isPending ? 'Uploading...' : 'Save to Vault'}
@@ -328,10 +422,25 @@ export default function DocumentsPage() {
       {/* MODAL: Replace Document */}
       {replaceDocId && (
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 space-y-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6 space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-gray-100">
-              <h3 className="text-sm font-bold text-gray-900">Replace Document Version</h3>
-              <button onClick={() => setReplaceDocId(null)} className="text-gray-400 hover:text-gray-600 text-lg">
+              <div>
+                <h3 className="text-sm font-bold text-gray-900">Replace Document Version</h3>
+                <p className="text-xs text-gray-400">
+                  Target:{' '}
+                  <span className="font-semibold text-gray-700">
+                    {documents.find((d) => d.id === replaceDocId)?.document_type}
+                  </span>
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setReplaceDocId(null);
+                  setReplaceValidation(null);
+                  setReplaceFile(null);
+                }}
+                className="text-gray-400 hover:text-gray-600 text-lg"
+              >
                 ×
               </button>
             </div>
@@ -344,7 +453,10 @@ export default function DocumentsPage() {
                 <label className="font-semibold text-gray-700">New File</label>
                 <input
                   type="file"
-                  onChange={(e) => setReplaceFile(e.target.files?.[0] || null)}
+                  onChange={(e) => {
+                    const doc = documents.find((d) => d.id === replaceDocId);
+                    handleReplaceFileSelected(e.target.files?.[0] || null, doc?.document_type || 'Statutory Document');
+                  }}
                   className="mt-1 block w-full text-xs text-gray-500 file:mr-4 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-primary-50 file:text-primary-700 hover:file:bg-primary-100"
                 />
               </div>
@@ -357,9 +469,26 @@ export default function DocumentsPage() {
                   className="input-base text-xs mt-1"
                 />
               </div>
+
+              {/* Pre-validation feedback card */}
+              <DocumentPreValidationCard
+                result={replaceValidation}
+                isValidating={isReplaceValidating}
+                onResetFile={() => {
+                  setReplaceFile(null);
+                  setReplaceValidation(null);
+                }}
+              />
             </div>
             <div className="pt-3 border-t border-gray-100 flex justify-end gap-2">
-              <button onClick={() => setReplaceDocId(null)} className="btn-secondary text-xs py-1.5">
+              <button
+                onClick={() => {
+                  setReplaceDocId(null);
+                  setReplaceValidation(null);
+                  setReplaceFile(null);
+                }}
+                className="btn-secondary text-xs py-1.5"
+              >
                 Cancel
               </button>
               <button
@@ -372,7 +501,12 @@ export default function DocumentsPage() {
                     });
                   }
                 }}
-                disabled={!replaceFile || replaceDoc.isPending}
+                disabled={
+                  !replaceFile ||
+                  replaceDoc.isPending ||
+                  isReplaceValidating ||
+                  (replaceValidation !== null && !replaceValidation.accepted)
+                }
                 className="btn-primary text-xs py-1.5"
               >
                 {replaceDoc.isPending ? 'Updating...' : 'Upload Replacement'}

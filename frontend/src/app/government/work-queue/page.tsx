@@ -3,6 +3,8 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { governmentApi, applicationsApi, queriesApi, inspectionsApi, documentsApi } from '@/lib/api';
 import { StatusBadge, PriorityBadge } from '@/components/ui/StatusBadge';
+import { ScrutinyPriorityBadge } from '@/components/scrutiny/ScrutinyPriorityBadge';
+import { ScrutinyPriorityCard } from '@/components/scrutiny/ScrutinyPriorityCard';
 import { ErrorState, TableRowSkeleton, EmptyState } from '@/components/ui/States';
 import { formatDate, formatDateTime } from '@/lib/utils';
 import { useAuth } from '@/lib/auth-context';
@@ -50,6 +52,7 @@ function WorkQueueContent() {
 
   const [status, setStatus] = useState('');
   const [priority, setPriority] = useState('');
+  const [scrutinyFilter, setScrutinyFilter] = useState('');
   const [departmentFilter, setDepartmentFilter] = useState('');
   const [selected, setSelected] = useState<WorkQueueItem | null>(null);
 
@@ -256,14 +259,19 @@ function WorkQueueContent() {
   const isAdmin = user?.role === 'ADMIN';
   const isInspector = user?.role === 'INSPECTOR';
 
+  // Filter by scrutiny level if selected
+  const filteredByScrutiny = scrutinyFilter
+    ? items.filter((item) => item.scrutiny_priority?.level === scrutinyFilter)
+    : items;
+
   // For INSPECTOR: Prioritize applications with assigned or scheduled inspections
   const displayItems = isInspector
-    ? [...items].sort((a, b) => {
+    ? [...filteredByScrutiny].sort((a, b) => {
         const aScore = (a.status === 'INSPECTION_SCHEDULED' ? 2 : 0) + ((a as any).upcoming_inspections > 0 ? 1 : 0);
         const bScore = (b.status === 'INSPECTION_SCHEDULED' ? 2 : 0) + ((b as any).upcoming_inspections > 0 ? 1 : 0);
         return bScore - aScore;
       })
-    : items;
+    : filteredByScrutiny;
 
   // Auto-open application if application_id is passed in search params
   const { data: directApp } = useQuery({
@@ -399,6 +407,16 @@ function WorkQueueContent() {
                 </option>
               ))}
             </select>
+            <select
+              value={scrutinyFilter}
+              onChange={(e) => setScrutinyFilter(e.target.value)}
+              className="input-base py-1.5 w-auto text-xs"
+            >
+              <option value="">All Scrutiny Priorities</option>
+              <option value="HIGH">High Review Complexity</option>
+              <option value="MEDIUM">Medium Review Complexity</option>
+              <option value="LOW">Standard Scrutiny</option>
+            </select>
           </div>
         </div>
 
@@ -415,21 +433,27 @@ function WorkQueueContent() {
             {displayItems.length > 0 && (
               <thead className="sticky top-0 bg-white border-b border-gray-100 z-10">
                 <tr>
-                  {['Application Ref', 'Permission / Authority', 'Applicant Entity', 'Status', 'Specified Time Limit', isInspector ? 'Site Visit' : 'Queries'].map(
-                    (h) => (
-                      <th
-                        key={h}
-                        className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"
-                      >
-                        {h}
-                      </th>
-                    )
-                  )}
+                  {[
+                    'Application Ref',
+                    'Permission / Authority',
+                    'Scrutiny Priority',
+                    'Applicant Entity',
+                    'Status',
+                    'Specified Time Limit',
+                    isInspector ? 'Site Visit' : 'Queries',
+                  ].map((h) => (
+                    <th
+                      key={h}
+                      className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"
+                    >
+                      {h}
+                    </th>
+                  ))}
                 </tr>
               </thead>
             )}
             <tbody className="divide-y divide-gray-50">
-              {isLoading && [...Array(6)].map((_, i) => <TableRowSkeleton key={i} cols={6} />)}
+              {isLoading && [...Array(6)].map((_, i) => <TableRowSkeleton key={i} cols={7} />)}
               {displayItems.map((item) => (
                 <tr
                   key={item.id}
@@ -452,7 +476,9 @@ function WorkQueueContent() {
                     <p className="text-[11px] text-blue-800 font-medium max-w-[150px] truncate">
                       {item.department_name}
                     </p>
-                    <PriorityBadge priority={item.priority} />
+                  </td>
+                  <td className="px-4 py-3">
+                    <ScrutinyPriorityBadge priority={item.scrutiny_priority} />
                   </td>
                   <td className="px-4 py-3">
                     <p className="text-xs text-gray-700 max-w-[120px] truncate">{item.org_name}</p>
@@ -541,6 +567,11 @@ function WorkQueueContent() {
                 ))}
               </div>
             </div>
+
+            {/* Explainable Scrutiny Priority & Review Complexity Card */}
+            <ScrutinyPriorityCard
+              priority={selectedAppDetail?.scrutiny_priority || selected.scrutiny_priority}
+            />
 
             {/* Jurisdiction Warning for Cross-Department Officer */}
             {isOfficer && !isOwnDepartment && (

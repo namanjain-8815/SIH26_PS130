@@ -8,7 +8,8 @@ import { formatRole } from '@/lib/terminology';
 import {
   ListTodo, BarChart3, Clock, LogOut,
   Building2, ChevronRight, AlertTriangle, Bell,
-  ShieldCheck, Landmark, CheckCircle2
+  ShieldCheck, Landmark, CheckCircle2, LifeBuoy,
+  CalendarDays
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { notificationsApi } from '@/lib/api';
@@ -16,11 +17,13 @@ import { AuthLoadingState, PermissionDeniedState } from '@/components/ui/States'
 import { BhashiniSeamButton } from '@/components/ui/BhashiniSeam';
 
 const NAV = [
-  { href: '/government/work-queue',  label: 'Competent Authority Queue', icon: ListTodo },
-  { href: '/government/sla-monitor', label: 'Specified Time Limits',    icon: Clock },
-  { href: '/government/bottlenecks', label: 'Bottlenecks & Delays',     icon: AlertTriangle },
-  { href: '/government/analytics',   label: 'Scrutiny Analytics',       icon: BarChart3 },
-  { href: '/government/notifications', label: 'Notifications',            icon: Bell, badge: true },
+  { href: '/government/work-queue',   label: 'Competent Authority Queue', icon: ListTodo },
+  { href: '/government/inspections',  label: 'Inspection Planner',        icon: CalendarDays },
+  { href: '/government/facilitation', label: 'Facilitation Requests',     icon: LifeBuoy },
+  { href: '/government/sla-monitor',  label: 'Specified Time Limits',     icon: Clock },
+  { href: '/government/bottlenecks',  label: 'Bottlenecks & Delays',      icon: AlertTriangle },
+  { href: '/government/analytics',    label: 'Scrutiny Analytics',        icon: BarChart3 },
+  { href: '/government/notifications',label: 'Notifications',             icon: Bell, badge: true },
 ];
 
 export default function GovernmentLayout({ children }: { children: React.ReactNode }) {

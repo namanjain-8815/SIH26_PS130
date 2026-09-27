@@ -1,6 +1,8 @@
 import { prisma } from '../lib/prisma';
 import { NotFoundError, ForbiddenError } from '../lib/errors';
 import { mockGovernmentAdapter } from '../adapters/MockGovernmentAdapter';
+import { getPrescribedFormForApproval } from './prescribedFormService';
+import { calculateScrutinyPriority } from './scrutinyPriorityService';
 import {
   notifyApplicationSubmitted,
   notifyDecisionRecorded,
@@ -58,7 +60,25 @@ export async function getApplication(id: string) {
   const application = await prisma.application.findUnique({
     where: { id },
     include: {
-      project_approval: { include: { approval_type: { include: { document_requirements: true } }, project: true } },
+      project_approval: {
+        include: {
+          approval_type: {
+            include: {
+              document_requirements: true,
+              dependent_on: true,
+            },
+          },
+          project: {
+            include: {
+              organization: true,
+              attributes: true,
+              project_approvals: {
+                include: { approval_type: true },
+              },
+            },
+          },
+        },
+      },
       department: true,
       application_documents: { include: { document: true } },
       queries: { include: { responses: true, creator: true }, orderBy: { created_at: 'desc' } },
@@ -68,7 +88,72 @@ export async function getApplication(id: string) {
     },
   });
   if (!application) throw new NotFoundError('Application not found');
-  return application;
+
+  const prescribedForm = getPrescribedFormForApproval(application.project_approval.approval_type.name);
+
+  const approvalType = application.project_approval?.approval_type;
+  const project = application.project_approval?.project;
+  const reqDocs = approvalType?.document_requirements?.length ?? 0;
+  const upDocs = application.application_documents?.length ?? 0;
+
+  const dependentOn = approvalType?.dependent_on ?? [];
+  const projectApprovals = project?.project_approvals ?? [];
+  const paByTypeId = new Map(projectApprovals.map((pa: any) => [pa.approval_type_id, pa]));
+
+  const prerequisites = dependentOn
+    .filter((dep: any) => dep.dependency_type === 'PREREQUISITE')
+    .map((dep: any) => ({
+      id: dep.prerequisite_approval_type_id,
+      status: paByTypeId.get(dep.prerequisite_approval_type_id)?.status ?? 'NOT_STARTED',
+    }));
+
+  const distinctDepts = new Set<string>();
+  if (application.department_id) distinctDepts.add(application.department_id);
+  for (const pa of projectApprovals) {
+    if ((pa as any).approval_type?.department_id) {
+      distinctDepts.add((pa as any).approval_type.department_id);
+    }
+  }
+
+  let adverseFindingsCount = 0;
+  const scheduledInspections = application.inspections ?? [];
+  for (const insp of scheduledInspections) {
+    for (const finding of (insp as any).findings ?? []) {
+      if (
+        finding.severity === 'CRITICAL' ||
+        finding.severity === 'HIGH' ||
+        finding.status === 'NON_COMPLIANT'
+      ) {
+        adverseFindingsCount++;
+      }
+    }
+  }
+
+  const scrutinyPriority = calculateScrutinyPriority({
+    application_status: application.status,
+    required_documents_count: reqDocs,
+    uploaded_documents_count: upDocs,
+    prerequisites,
+    concerned_departments_count: Math.max(1, distinctDepts.size),
+    requires_inspection: approvalType?.requires_inspection ?? false,
+    scheduled_inspections_count: scheduledInspections.length,
+    open_queries_count: application.queries?.length ?? 0,
+    sla_status: application.sla_instance?.status ?? null,
+    sla_due_date: application.sla_instance?.due_date ?? null,
+    adverse_findings_count: adverseFindingsCount,
+  });
+
+  return {
+    ...application,
+    scrutiny_priority: scrutinyPriority,
+    project_approval: {
+      ...application.project_approval,
+      approval_type: {
+        ...application.project_approval.approval_type,
+        prescribed_form: prescribedForm,
+      },
+    },
+  };
 }
 
 export async function updateApplicationStatus(id: string, status: string, actorId?: string, notes?: string) {
@@ -431,5 +516,124 @@ export async function getSimulatedGatewayStatus(applicationId: string) {
   const application = await prisma.application.findUnique({ where: { id: applicationId } });
   if (!application) throw new NotFoundError('Application not found');
   return mockGovernmentAdapter.getApplicationStatus(applicationId);
+}
+
+/**
+ * POST /api/projects/:id/start-eligible-applications (PS 26130 P0.3)
+ * Orchestrates parallel application start for eligible ProjectApprovals:
+ * - identifies ProjectApproval records that can start now (prerequisites completed/none)
+ * - excludes already-started/completed applications
+ * - creates missing application workspaces in IN_PREPARATION status
+ * - preserves prerequisite/dependency rules
+ * - does not bypass required documents or auto-submit
+ * - does not create duplicate applications
+ */
+export async function startEligibleApplications(projectId: string) {
+  const project = await prisma.project.findUnique({ where: { id: projectId } });
+  if (!project) throw new NotFoundError('Project not found');
+
+  const projectApprovals = await prisma.projectApproval.findMany({
+    where: { project_id: projectId },
+    include: {
+      approval_type: true,
+      application: true,
+    },
+  });
+
+  const approvalTypeIds = projectApprovals.map((pa) => pa.approval_type_id);
+  const paByTypeId = new Map<string, any>(projectApprovals.map((pa) => [pa.approval_type_id, pa]));
+
+  const dependencies = await prisma.approvalDependency.findMany({
+    where: {
+      prerequisite_approval_type_id: { in: approvalTypeIds },
+      dependent_approval_type_id: { in: approvalTypeIds },
+      dependency_type: 'PREREQUISITE',
+    },
+    include: { prerequisite_approval: true },
+  });
+
+  const started: Array<{
+    project_approval_id: string;
+    approval_name: string;
+    authority: string;
+    application_id: string;
+    application_number: string;
+    status: string;
+  }> = [];
+
+  const alreadyActive: Array<{
+    project_approval_id: string;
+    approval_name: string;
+    application_id: string;
+    application_number: string;
+    status: string;
+  }> = [];
+
+  const blockedByPrerequisites: Array<{
+    project_approval_id: string;
+    approval_name: string;
+    missing_prerequisites: string[];
+  }> = [];
+
+  for (const pa of projectApprovals) {
+    if (pa.status === 'COMPLETED') continue;
+
+    // Check if application already exists
+    if (pa.application) {
+      alreadyActive.push({
+        project_approval_id: pa.id,
+        approval_name: pa.approval_type.name,
+        application_id: pa.application.id,
+        application_number: pa.application.application_number,
+        status: pa.application.status,
+      });
+      continue;
+    }
+
+    // Check prerequisites
+    const prereqs = dependencies.filter((d) => d.dependent_approval_type_id === pa.approval_type_id);
+    const incompletePrereqs = prereqs.filter((d) => {
+      const prereqPA = paByTypeId.get(d.prerequisite_approval_type_id);
+      return prereqPA?.status !== 'COMPLETED';
+    });
+
+    if (incompletePrereqs.length > 0) {
+      blockedByPrerequisites.push({
+        project_approval_id: pa.id,
+        approval_name: pa.approval_type.name,
+        missing_prerequisites: incompletePrereqs.map(
+          (d) => d.prerequisite_approval?.name || d.prerequisite_approval_type_id
+        ),
+      });
+      continue;
+    }
+
+    // Eligible! Create missing workspace
+    const app = await createApplication(pa.id);
+    await prisma.projectApproval.update({
+      where: { id: pa.id },
+      data: { status: 'IN_PROGRESS' },
+    });
+
+    started.push({
+      project_approval_id: pa.id,
+      approval_name: pa.approval_type.name,
+      authority: pa.approval_type.authority,
+      application_id: app.id,
+      application_number: app.application_number,
+      status: app.status,
+    });
+  }
+
+  return {
+    started,
+    already_active: alreadyActive,
+    blocked_by_prerequisites: blockedByPrerequisites,
+    summary: {
+      started_count: started.length,
+      already_active_count: alreadyActive.length,
+      blocked_count: blockedByPrerequisites.length,
+    },
+  };
 }
 

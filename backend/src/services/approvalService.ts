@@ -1,8 +1,13 @@
 import { prisma } from '../lib/prisma';
 import { NotFoundError } from '../lib/errors';
+import { getPrescribedFormForApproval } from './prescribedFormService';
 
 export async function listApprovalTypes() {
-  return prisma.approvalType.findMany({ where: { active: true }, orderBy: { name: 'asc' } });
+  const types = await prisma.approvalType.findMany({ where: { active: true }, orderBy: { name: 'asc' } });
+  return types.map((t) => ({
+    ...t,
+    prescribed_form: getPrescribedFormForApproval(t.name),
+  }));
 }
 
 export async function getApprovalType(id: string) {
@@ -11,7 +16,10 @@ export async function getApprovalType(id: string) {
     include: { document_requirements: true, applicability_rules: true },
   });
   if (!approvalType) throw new NotFoundError('Approval type not found');
-  return approvalType;
+  return {
+    ...approvalType,
+    prescribed_form: getPrescribedFormForApproval(approvalType.name),
+  };
 }
 
 export async function listProjectApprovals(projectId: string) {
@@ -217,5 +225,7 @@ export async function getProjectApprovalDetail(projectApprovalId: string) {
       : null,
     // 10. Next action
     next_action: nextAction,
+    // 11. Prescribed Form / Template (P1.8)
+    prescribed_form: getPrescribedFormForApproval(pa.approval_type.name),
   };
 }

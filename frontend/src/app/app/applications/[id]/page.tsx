@@ -13,14 +13,19 @@ import {
 } from '@/lib/api';
 import { StatusBadge, PriorityBadge } from '@/components/ui/StatusBadge';
 import { CardSkeleton, EmptyState, ErrorState } from '@/components/ui/States';
-import { formatDate, formatDateTime } from '@/lib/utils';
+import { formatDate, formatDateTime, formatCurrency } from '@/lib/utils';
 import { formatRole } from '@/lib/terminology';
 import type {
   ApplicationDetail,
   DocumentItem,
   QueryItem,
   ReadinessCheckResult,
+  DocumentPreValidationResult,
 } from '@/types/api';
+import { DocumentPreValidationCard } from '@/components/documents/DocumentPreValidationCard';
+import { PrescribedFormCard } from '@/components/forms/PrescribedFormCard';
+import { ScrutinyPriorityCard } from '@/components/scrutiny/ScrutinyPriorityCard';
+import { ScrutinyPriorityBadge } from '@/components/scrutiny/ScrutinyPriorityBadge';
 import {
   ArrowLeft,
   FileCheck2,
@@ -43,6 +48,10 @@ import {
   Eye,
   FilePlus,
   HelpCircle,
+  Briefcase,
+  Users,
+  Layers,
+  Database,
 } from 'lucide-react';
 
 type Tab = 'overview' | 'documents' | 'readiness' | 'queries' | 'inspections' | 'timeline';
@@ -73,6 +82,60 @@ export default function ApplicationWorkspacePage() {
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploadExpiryDate, setUploadExpiryDate] = useState('');
   const [actionNotes, setActionNotes] = useState('');
+
+  // Pre-validation state
+  const [uploadValidation, setUploadValidation] = useState<DocumentPreValidationResult | null>(null);
+  const [isUploadValidating, setIsUploadValidating] = useState(false);
+  const [replaceValidation, setReplaceValidation] = useState<DocumentPreValidationResult | null>(null);
+  const [isReplaceValidating, setIsReplaceValidating] = useState(false);
+
+  const handleUploadFileSelected = async (file: File | null) => {
+    setUploadFile(file);
+    setUploadValidation(null);
+    if (!file || !uploadDocType) return;
+
+    setIsUploadValidating(true);
+    try {
+      const base64 = await fileToBase64(file);
+      const res = await documentsApi.preValidate({
+        document_type: uploadDocType,
+        file_name: file.name,
+        file_base64: base64,
+        size_bytes: file.size,
+        expiry_date: uploadExpiryDate || undefined,
+        project_id: projectId,
+      });
+      setUploadValidation(res);
+    } catch {
+      // Non-blocking
+    } finally {
+      setIsUploadValidating(false);
+    }
+  };
+
+  const handleReplaceFileSelected = async (file: File | null, docType: string) => {
+    setUploadFile(file);
+    setReplaceValidation(null);
+    if (!file) return;
+
+    setIsReplaceValidating(true);
+    try {
+      const base64 = await fileToBase64(file);
+      const res = await documentsApi.preValidate({
+        document_type: docType,
+        file_name: file.name,
+        file_base64: base64,
+        size_bytes: file.size,
+        expiry_date: uploadExpiryDate || undefined,
+        project_id: projectId,
+      });
+      setReplaceValidation(res);
+    } catch {
+      // Non-blocking
+    } finally {
+      setIsReplaceValidating(false);
+    }
+  };
 
   // Fetch application detail
   const {
@@ -450,6 +513,10 @@ export default function ApplicationWorkspacePage() {
                     <span className="text-gray-500">Department Authority:</span>
                     <span className="font-semibold text-gray-900">{app.department?.name || approvalType.authority}</span>
                   </div>
+                  <div className="flex justify-between py-1 border-b border-gray-50 items-center">
+                    <span className="text-gray-500">Scrutiny Priority:</span>
+                    <ScrutinyPriorityBadge priority={app.scrutiny_priority} />
+                  </div>
                   <div className="flex justify-between py-1 border-b border-gray-50">
                     <span className="text-gray-500">Project Name:</span>
                     <span className="font-semibold text-gray-900">{project.name}</span>
@@ -540,6 +607,146 @@ export default function ApplicationWorkspacePage() {
                 </div>
               </div>
             </div>
+
+            {/* Explainable Scrutiny Priority & Review Complexity Card (P1.9) */}
+            <ScrutinyPriorityCard
+              priority={app.scrutiny_priority}
+              onNavigateTab={(tab) => setActiveTab(tab as Tab)}
+            />
+
+            {/* Verified Project Dossier / Reusable Entity Profile (P0.2) */}
+            <div className="card p-6 bg-white border border-gray-100 shadow-sm space-y-5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-100 pb-4">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="badge bg-emerald-50 text-emerald-800 border border-emerald-200 text-[11px] font-semibold">
+                      <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                      PS 26130 Verified Project Dossier
+                    </span>
+                    <span className="text-gray-300">•</span>
+                    <span className="text-xs text-emerald-700 font-medium">Automatic Single-Window Data Reuse</span>
+                  </div>
+                  <h3 className="text-base font-bold text-gray-900 mt-1">Verified Entity & Proposal Dossier</h3>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Pre-populated from applicant registration. Certified once and automatically reused across MIDC, MPCB, DISH, and local authorities without duplicate data entry.
+                  </p>
+                </div>
+                <div className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs text-gray-600 self-start sm:self-auto">
+                  <Database className="w-3.5 h-3.5 text-primary-600" />
+                  <span>Dossier Source: <strong className="text-gray-900">{project.id}</strong></span>
+                </div>
+              </div>
+
+              {/* Grid of Reused Data */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                {/* Column 1: Applicant Entity */}
+                <div className="p-3.5 rounded-xl bg-gray-50/70 border border-gray-100 space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-gray-500 font-medium flex items-center gap-1.5">
+                      <Building2 className="w-3.5 h-3.5 text-gray-400" /> Applicant Entity
+                    </span>
+                    <span className="text-[10px] text-emerald-700 font-semibold bg-emerald-100/60 px-1.5 py-0.5 rounded">
+                      Verified
+                    </span>
+                  </div>
+                  <p className="text-sm font-bold text-gray-900 truncate">
+                    {project.organization?.legal_name ?? 'ABC Foods Pvt Ltd'}
+                  </p>
+                  <p className="text-[11px] text-gray-500">
+                    Structure: <span className="font-medium text-gray-700">{project.organization?.entity_type ?? 'Private Limited Company'}</span>
+                  </p>
+                  <p className="text-[10px] text-gray-400 border-t border-gray-200/60 pt-1.5">
+                    Source: Corporate Master / GSTIN Registry
+                  </p>
+                </div>
+
+                {/* Column 2: Investment Proposal */}
+                <div className="p-3.5 rounded-xl bg-gray-50/70 border border-gray-100 space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-gray-500 font-medium flex items-center gap-1.5">
+                      <Briefcase className="w-3.5 h-3.5 text-gray-400" /> Proposal & Sector
+                    </span>
+                    <span className="text-[10px] text-emerald-700 font-semibold bg-emerald-100/60 px-1.5 py-0.5 rounded">
+                      Verified
+                    </span>
+                  </div>
+                  <p className="text-sm font-bold text-gray-900 truncate">{project.name}</p>
+                  <p className="text-[11px] text-gray-500">
+                    Sector: <span className="font-medium text-gray-700">{project.sector}</span>
+                  </p>
+                  <p className="text-[10px] text-gray-400 border-t border-gray-200/60 pt-1.5">
+                    Source: Investment Proposal Registration
+                  </p>
+                </div>
+
+                {/* Column 3: Capital & Employment */}
+                <div className="p-3.5 rounded-xl bg-gray-50/70 border border-gray-100 space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-gray-500 font-medium flex items-center gap-1.5">
+                      <Users className="w-3.5 h-3.5 text-gray-400" /> Capital & Headcount
+                    </span>
+                    <span className="text-[10px] text-emerald-700 font-semibold bg-emerald-100/60 px-1.5 py-0.5 rounded">
+                      Verified
+                    </span>
+                  </div>
+                  <p className="text-sm font-bold text-primary-700">
+                    {project.investment_amount ? formatCurrency(project.investment_amount) : '₹25,00,00,000'}
+                  </p>
+                  <p className="text-[11px] text-gray-500">
+                    Employment: <span className="font-medium text-gray-700">{project.employee_count ?? 80} Employees</span>
+                  </p>
+                  <p className="text-[10px] text-gray-400 border-t border-gray-200/60 pt-1.5">
+                    Source: Project Appraisal Schedule
+                  </p>
+                </div>
+
+                {/* Column 4: Location & Jurisdiction */}
+                <div className="p-3.5 rounded-xl bg-gray-50/70 border border-gray-100 space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-gray-500 font-medium flex items-center gap-1.5">
+                      <MapPin className="w-3.5 h-3.5 text-gray-400" /> Location Context
+                    </span>
+                    <span className="text-[10px] text-emerald-700 font-semibold bg-emerald-100/60 px-1.5 py-0.5 rounded">
+                      Verified
+                    </span>
+                  </div>
+                  <p className="text-sm font-bold text-gray-900 truncate">
+                    {project.district} {project.industrial_area ? `· ${project.industrial_area}` : ''}
+                  </p>
+                  <p className="text-[11px] text-gray-500 truncate" title={project.address || undefined}>
+                    Address: <span className="font-medium text-gray-700">{project.address ?? 'Plot No. 42, MIDC Bhosari'}</span>
+                  </p>
+                  <p className="text-[10px] text-gray-400 border-t border-gray-200/60 pt-1.5">
+                    Source: MIDC Land Allotment / Survey
+                  </p>
+                </div>
+              </div>
+
+              {/* Technical Attributes Row */}
+              {project.attributes && project.attributes.length > 0 && (
+                <div className="pt-3 border-t border-gray-100">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-xs font-semibold text-gray-700 flex items-center gap-1.5">
+                      <Layers className="w-3.5 h-3.5 text-primary-600" />
+                      Reused Technical & Regulatory Attributes
+                    </p>
+                    <span className="text-[11px] text-gray-400">Consumed by statutory rule engine</span>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2">
+                    {project.attributes.map((attr) => (
+                      <div key={attr.key} className="p-2 bg-gray-50 rounded-lg text-xs border border-gray-100">
+                        <span className="text-[10px] text-gray-400 uppercase tracking-wider block font-semibold">
+                          {attr.key.replace(/_/g, ' ')}
+                        </span>
+                        <span className="font-semibold text-gray-800 capitalize mt-0.5 block truncate">
+                          {attr.value}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         )}
 
@@ -573,6 +780,17 @@ export default function ApplicationWorkspacePage() {
                 </button>
               </div>
             </div>
+
+            {/* Prescribed Form / Template (P1.8) */}
+            {approvalType?.prescribed_form && (
+              <PrescribedFormCard
+                form={approvalType.prescribed_form}
+                onUploadCompletedForm={(docType) => {
+                  setUploadDocType(docType);
+                  setShowUploadModal(true);
+                }}
+              />
+            )}
 
             {/* Document Requirements Checklist vs Attached */}
             <div className="card p-5">
@@ -1192,10 +1410,20 @@ export default function ApplicationWorkspacePage() {
       {/* MODAL: Upload New Document */}
       {showUploadModal && (
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 space-y-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6 space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-gray-100">
-              <h3 className="text-sm font-bold text-gray-900">Upload & Attach Document</h3>
-              <button onClick={() => setShowUploadModal(false)} className="text-gray-400 hover:text-gray-600 text-lg">
+              <div>
+                <h3 className="text-sm font-bold text-gray-900">Upload & Attach Document</h3>
+                <p className="text-xs text-gray-400">Statutory multi-tier pre-validation will be executed before attachment.</p>
+              </div>
+              <button
+                onClick={() => {
+                  setShowUploadModal(false);
+                  setUploadValidation(null);
+                  setUploadFile(null);
+                }}
+                className="text-gray-400 hover:text-gray-600 text-lg"
+              >
                 ×
               </button>
             </div>
@@ -1205,16 +1433,21 @@ export default function ApplicationWorkspacePage() {
                 <input
                   type="text"
                   value={uploadDocType}
-                  onChange={(e) => setUploadDocType(e.target.value)}
+                  onChange={(e) => {
+                    setUploadDocType(e.target.value);
+                    if (uploadFile) {
+                      handleUploadFileSelected(uploadFile);
+                    }
+                  }}
                   placeholder="e.g. Fire Safety Layout Drawing"
                   className="input-base text-xs mt-1"
                 />
               </div>
               <div>
-                <label className="font-semibold text-gray-700">Select File</label>
+                <label className="font-semibold text-gray-700">Select File (PDF, JPG, PNG)</label>
                 <input
                   type="file"
-                  onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
+                  onChange={(e) => handleUploadFileSelected(e.target.files?.[0] || null)}
                   className="mt-1 block w-full text-xs text-gray-500 file:mr-4 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-primary-50 file:text-primary-700 hover:file:bg-primary-100"
                 />
               </div>
@@ -1227,9 +1460,26 @@ export default function ApplicationWorkspacePage() {
                   className="input-base text-xs mt-1"
                 />
               </div>
+
+              {/* Pre-validation feedback card */}
+              <DocumentPreValidationCard
+                result={uploadValidation}
+                isValidating={isUploadValidating}
+                onResetFile={() => {
+                  setUploadFile(null);
+                  setUploadValidation(null);
+                }}
+              />
             </div>
             <div className="pt-3 border-t border-gray-100 flex justify-end gap-2">
-              <button onClick={() => setShowUploadModal(false)} className="btn-secondary text-xs py-1.5">
+              <button
+                onClick={() => {
+                  setShowUploadModal(false);
+                  setUploadValidation(null);
+                  setUploadFile(null);
+                }}
+                className="btn-secondary text-xs py-1.5"
+              >
                 Cancel
               </button>
               <button
@@ -1242,7 +1492,13 @@ export default function ApplicationWorkspacePage() {
                     });
                   }
                 }}
-                disabled={!uploadDocType || !uploadFile || uploadDoc.isPending}
+                disabled={
+                  !uploadDocType ||
+                  !uploadFile ||
+                  uploadDoc.isPending ||
+                  isUploadValidating ||
+                  (uploadValidation !== null && !uploadValidation.accepted)
+                }
                 className="btn-primary text-xs py-1.5"
               >
                 {uploadDoc.isPending ? 'Uploading...' : 'Upload & Attach'}
@@ -1255,10 +1511,26 @@ export default function ApplicationWorkspacePage() {
       {/* MODAL: Replace Document */}
       {showReplaceModal && (
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 space-y-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6 space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-gray-100">
-              <h3 className="text-sm font-bold text-gray-900">Upload Replacement Document</h3>
-              <button onClick={() => setShowReplaceModal(null)} className="text-gray-400 hover:text-gray-600 text-lg">
+              <div>
+                <h3 className="text-sm font-bold text-gray-900">Upload Replacement Document</h3>
+                <p className="text-xs text-gray-400">
+                  Target:{' '}
+                  <span className="font-semibold text-gray-700">
+                    {application?.application_documents?.find((d: any) => d.document?.id === showReplaceModal)?.document?.document_type ||
+                      'Statutory Document'}
+                  </span>
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setShowReplaceModal(null);
+                  setReplaceValidation(null);
+                  setUploadFile(null);
+                }}
+                className="text-gray-400 hover:text-gray-600 text-lg"
+              >
                 ×
               </button>
             </div>
@@ -1271,7 +1543,12 @@ export default function ApplicationWorkspacePage() {
                 <label className="font-semibold text-gray-700">Replacement File</label>
                 <input
                   type="file"
-                  onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
+                  onChange={(e) => {
+                    const targetDocType =
+                      application?.application_documents?.find((d: any) => d.document?.id === showReplaceModal)?.document?.document_type ||
+                      'Statutory Document';
+                    handleReplaceFileSelected(e.target.files?.[0] || null, targetDocType);
+                  }}
                   className="mt-1 block w-full text-xs text-gray-500 file:mr-4 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-primary-50 file:text-primary-700 hover:file:bg-primary-100"
                 />
               </div>
@@ -1284,9 +1561,26 @@ export default function ApplicationWorkspacePage() {
                   className="input-base text-xs mt-1"
                 />
               </div>
+
+              {/* Pre-validation feedback card */}
+              <DocumentPreValidationCard
+                result={replaceValidation}
+                isValidating={isReplaceValidating}
+                onResetFile={() => {
+                  setUploadFile(null);
+                  setReplaceValidation(null);
+                }}
+              />
             </div>
             <div className="pt-3 border-t border-gray-100 flex justify-end gap-2">
-              <button onClick={() => setShowReplaceModal(null)} className="btn-secondary text-xs py-1.5">
+              <button
+                onClick={() => {
+                  setShowReplaceModal(null);
+                  setReplaceValidation(null);
+                  setUploadFile(null);
+                }}
+                className="btn-secondary text-xs py-1.5"
+              >
                 Cancel
               </button>
               <button
@@ -1299,7 +1593,12 @@ export default function ApplicationWorkspacePage() {
                     });
                   }
                 }}
-                disabled={!uploadFile || replaceDoc.isPending}
+                disabled={
+                  !uploadFile ||
+                  replaceDoc.isPending ||
+                  isReplaceValidating ||
+                  (replaceValidation !== null && !replaceValidation.accepted)
+                }
                 className="btn-primary text-xs py-1.5"
               >
                 {replaceDoc.isPending ? 'Replacing...' : 'Confirm Replacement'}

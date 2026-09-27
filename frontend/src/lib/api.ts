@@ -44,6 +44,9 @@ import type {
   ReadinessCheckResult,
   WorkQueueItem,
   AnalyticsSummary,
+  RegulatoryAnalysisResult,
+  ProjectSubmissionCentreData,
+  SubmitApplicationResponse,
 } from '@/types/api';
 import type { Project, ProjectApproval, ApprovalType } from '@/types';
 
@@ -58,9 +61,9 @@ export const authApi = {
 export const projectsApi = {
   list: () => api.get<Project[]>('/projects'),
   get: (id: string) => api.get<Project>(`/projects/${id}`),
-  create: (body: Partial<Project>) => api.post<Project>('/projects', body),
+  create: (body: Partial<Project> & { entity_name?: string; entity_type?: string }) => api.post<Project>('/projects', body),
   update: (id: string, body: Partial<Project>) => api.patch<Project>(`/projects/${id}`, body),
-  runRegulatoryAnalysis: (id: string) => api.post<{ applicable: unknown[]; not_applicable: unknown[] }>(`/projects/${id}/regulatory-analysis`),
+  runRegulatoryAnalysis: (id: string) => api.post<RegulatoryAnalysisResult>(`/projects/${id}/regulatory-analysis`),
   getControlCentre: (id: string) => api.get<ControlCentrePayload>(`/projects/${id}/control-centre`),
   getDependencyGraph: (id: string) => api.get<DependencyGraphPayload>(`/projects/${id}/dependency-graph`),
   getApprovals: (id: string) => api.get<ProjectApproval[]>(`/projects/${id}/approvals`),
@@ -71,7 +74,38 @@ export const projectsApi = {
   getCompliance: (id: string) => api.get<unknown[]>(`/projects/${id}/compliance`),
   getSLAStatus: (id: string) => api.get<unknown[]>(`/projects/${id}/sla-status`),
   saveAttributes: (id: string, attributes: Record<string, string>) =>
-    api.post(`/projects/${id}/attributes`, { attributes }),
+    api.post(`/projects/${id}/attributes`, attributes),
+  startEligibleApplications: (id: string) =>
+    api.post<{
+      started: Array<{
+        project_approval_id: string;
+        approval_name: string;
+        authority: string;
+        application_id: string;
+        application_number: string;
+        status: string;
+      }>;
+      already_active: Array<{
+        project_approval_id: string;
+        approval_name: string;
+        application_id: string;
+        application_number: string;
+        status: string;
+      }>;
+      blocked_by_prerequisites: Array<{
+        project_approval_id: string;
+        approval_name: string;
+        missing_prerequisites: string[];
+      }>;
+      summary: {
+        started_count: number;
+        already_active_count: number;
+        blocked_count: number;
+      };
+    }>(`/projects/${id}/start-eligible-applications`),
+  getSubmissionCentre: (id: string) => api.get<ProjectSubmissionCentreData>(`/projects/${id}/submission-centre`),
+  submitApplication: (projectId: string, applicationId: string, notes?: string) =>
+    api.post<SubmitApplicationResponse>(`/projects/${projectId}/submit-application/${applicationId}`, { notes }),
 };
 
 // Approval Types
@@ -102,6 +136,8 @@ export const applicationsApi = {
     api.post<{ success: boolean; message: string }>(`/applications/${id}/escalate`, { reason }),
   create: (project_approval_id: string, department_id?: string) =>
     api.post<{ id: string; application_number: string }>('/applications', { project_approval_id, department_id }),
+  getScrutinyPriority: (id: string) =>
+    api.get<import('@/types/api').ScrutinyPriorityResult>(`/applications/${id}/scrutiny-priority`),
 };
 
 // Queries
@@ -120,6 +156,17 @@ export const queriesApi = {
 // Inspections
 export const inspectionsApi = {
   listProject: (projectId: string) => api.get<unknown[]>(`/projects/${projectId}/inspections`),
+  listPlanner: (params?: { department_id?: string; inspector_id?: string; status?: string; date_from?: string; date_to?: string }) => {
+    const qs = new URLSearchParams();
+    if (params?.department_id) qs.set('department_id', params.department_id);
+    if (params?.inspector_id) qs.set('inspector_id', params.inspector_id);
+    if (params?.status) qs.set('status', params.status);
+    if (params?.date_from) qs.set('date_from', params.date_from);
+    if (params?.date_to) qs.set('date_to', params.date_to);
+    const query = qs.toString() ? `?${qs.toString()}` : '';
+    return api.get<import('@/types/api').PlannerInspection[]>(`/inspections${query}`);
+  },
+  listInspectors: () => api.get<import('@/types/api').InspectorUser[]>('/inspectors'),
   schedule: (data: object) => api.post('/inspections', data),
   update: (id: string, data: object) => api.patch(`/inspections/${id}`, data),
   recordFinding: (inspectionId: string, data: object) => api.post(`/inspections/${inspectionId}/findings`, data),
@@ -134,6 +181,14 @@ export const documentsApi = {
     api.post<import('@/types/api').DocumentItem>(`/projects/${projectId}/documents`, body),
   replace: (id: string, body: { file_name: string; file_base64: string; expiry_date?: string }) =>
     api.post<import('@/types/api').DocumentItem>(`/documents/${id}/replace`, body),
+  preValidate: (body: {
+    document_type: string;
+    file_name: string;
+    file_base64?: string;
+    size_bytes?: number;
+    project_id?: string;
+    expiry_date?: string;
+  }) => api.post<import('@/types/api').DocumentPreValidationResult>('/documents/pre-validate', body),
 };
 
 // Notifications
@@ -284,3 +339,42 @@ export const adminApi = {
     return api.get<unknown[]>(`/admin/audit-log${params ? `?${params}` : ''}`);
   },
 };
+
+// Facilitation & Investor Assistance
+export const facilitationApi = {
+  list: (filters?: { status?: string; category?: string; priority?: string; project_id?: string }) => {
+    const params = new URLSearchParams();
+    if (filters?.status && filters.status !== 'ALL') params.set('status', filters.status);
+    if (filters?.category && filters.category !== 'ALL') params.set('category', filters.category);
+    if (filters?.priority && filters.priority !== 'ALL') params.set('priority', filters.priority);
+    if (filters?.project_id && filters.project_id !== 'ALL') params.set('project_id', filters.project_id);
+    const qs = params.toString();
+    return api.get<import('@/types/api').FacilitationRequest[]>(`/facilitation${qs ? `?${qs}` : ''}`);
+  },
+  get: (id: string) => api.get<import('@/types/api').FacilitationRequest>(`/facilitation/${id}`),
+  create: (body: {
+    category: string;
+    subject: string;
+    description: string;
+    project_id?: string;
+    application_id?: string;
+    priority?: string;
+  }) => api.post<import('@/types/api').FacilitationRequest>('/facilitation', body),
+  claim: (id: string, desk?: string) =>
+    api.post<import('@/types/api').FacilitationRequest>(`/facilitation/${id}/claim`, { desk }),
+  addNote: (id: string, note: string, is_internal?: boolean) =>
+    api.post<import('@/types/api').FacilitationRequest>(`/facilitation/${id}/notes`, { note, is_internal }),
+  resolve: (id: string, resolution_notes: string) =>
+    api.post<import('@/types/api').FacilitationRequest>(`/facilitation/${id}/resolve`, { resolution_notes }),
+  close: (id: string) => api.post<import('@/types/api').FacilitationRequest>(`/facilitation/${id}/close`),
+};
+
+// Prescribed Forms & Templates (P1.8)
+export const formsApi = {
+  list: () => api.get<import('@/types/api').PrescribedForm[]>('/prescribed-forms'),
+  get: (id: string) => api.get<import('@/types/api').PrescribedForm>(`/prescribed-forms/${id}`),
+  downloadUrl: (id: string) => `/api/prescribed-forms/${id}/download`,
+  getForApprovalType: (approvalTypeId: string) =>
+    api.get<import('@/types/api').PrescribedForm | null>(`/approval-types/${approvalTypeId}/prescribed-form`),
+};
+

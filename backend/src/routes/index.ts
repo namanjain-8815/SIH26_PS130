@@ -13,6 +13,7 @@ import complianceRoutes from './compliance';
 import governmentRoutes from './government';
 import adminRoutes from './admin';
 import notificationRoutes from './notifications';
+import facilitationRoutes from './facilitation';
 
 export const router = Router();
 
@@ -30,3 +31,4 @@ router.use('/', complianceRoutes);
 router.use('/government', governmentRoutes);
 router.use('/admin', adminRoutes);
 router.use('/notifications', notificationRoutes);
+router.use('/facilitation', facilitationRoutes);

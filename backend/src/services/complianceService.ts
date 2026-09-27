@@ -2,17 +2,38 @@ import { prisma } from '../lib/prisma';
 import { NotFoundError } from '../lib/errors';
 
 export async function listProjectCompliance(projectId: string) {
-  const reqs = await prisma.complianceRequirement.findMany({
+  let reqs = await prisma.complianceRequirement.findMany({
     where: { project_id: projectId },
     orderBy: { next_due_date: 'asc' },
   });
+
+  // If no compliance requirements exist yet, attempt dynamic derivation from project approvals
+  if (reqs.length === 0) {
+    const projectApprovals = await prisma.projectApproval.findMany({
+      where: { project_id: projectId },
+      include: { approval_type: true },
+    });
+    if (projectApprovals.length > 0) {
+      const types = projectApprovals
+        .map((pa) => pa.approval_type)
+        .filter((t): t is NonNullable<typeof t> => t != null);
+      if (types.length > 0) {
+        await deriveComplianceObligations(projectId, types);
+        reqs = await prisma.complianceRequirement.findMany({
+          where: { project_id: projectId },
+          orderBy: { next_due_date: 'asc' },
+        });
+      }
+    }
+  }
 
   const now = new Date();
   const in30Days = new Date(now.getTime() + 30 * 86_400_000);
   const in90Days = new Date(now.getTime() + 90 * 86_400_000);
 
   return reqs.map((req) => {
-    const daysUntilDue = Math.ceil((req.next_due_date.getTime() - now.getTime()) / 86_400_000);
+    const dueDate = new Date(req.next_due_date);
+    const daysUntilDue = Math.ceil((dueDate.getTime() - now.getTime()) / 86_400_000);
     let urgency: 'critical' | 'high' | 'medium' | 'low';
     if (req.status === 'OVERDUE' || daysUntilDue < 0) urgency = 'critical';
     else if (daysUntilDue <= 30) urgency = 'high';
@@ -23,10 +44,95 @@ export async function listProjectCompliance(projectId: string) {
       ...req,
       days_until_due: daysUntilDue,
       urgency,
-      is_due_soon: req.next_due_date <= in30Days && req.status !== 'COMPLETED',
-      is_upcoming: req.next_due_date <= in90Days && req.status !== 'COMPLETED',
+      is_due_soon: dueDate <= in30Days && req.status !== 'COMPLETED',
+      is_upcoming: dueDate <= in90Days && req.status !== 'COMPLETED',
     };
   });
+}
+
+/**
+ * Dynamically derives and synchronizes compliance obligations for a project
+ * based on applicable approval types with renewal_period_days configured.
+ * (P0.5 — Dynamic Compliance Generation)
+ */
+export async function deriveComplianceObligations(
+  projectId: string,
+  approvalTypes: Array<{
+    id: string;
+    name: string;
+    authority: string;
+    renewal_period_days?: number | null;
+  }>
+) {
+  // Filter for approvals that require periodic renewal/compliance
+  const periodicApprovals = approvalTypes.filter(
+    (a) => a.renewal_period_days && a.renewal_period_days > 0
+  );
+
+  if (periodicApprovals.length === 0) return [];
+
+  // Fetch existing obligations for this project to prevent duplicates
+  const existing = await prisma.complianceRequirement.findMany({
+    where: { project_id: projectId },
+  });
+
+  const results = [];
+  const now = Date.now();
+
+  for (const approval of periodicApprovals) {
+    const renewalDays = approval.renewal_period_days!;
+    let frequency = 'Annual';
+    if (renewalDays <= 90) frequency = 'Quarterly';
+    else if (renewalDays <= 185) frequency = 'Half-Yearly';
+    else if (renewalDays <= 365) frequency = 'Annual';
+    else if (renewalDays <= 1095) frequency = '3-Yearly';
+    else frequency = '5-Yearly';
+
+    const defaultName = `${approval.name} — ${frequency} Renewal`;
+
+    // Check if an obligation already exists for this approval
+    const found = existing.find(
+      (e) =>
+        e.linked_approval_id === approval.id ||
+        e.name === defaultName ||
+        (e.name.toLowerCase().includes(approval.name.toLowerCase()) && e.frequency === frequency)
+    );
+
+    if (found) {
+      // If already COMPLETED, preserve completed state!
+      if (found.status === 'COMPLETED') {
+        results.push(found);
+        continue;
+      }
+      // Otherwise update authority if changed
+      if (found.authority !== approval.authority) {
+        const updated = await prisma.complianceRequirement.update({
+          where: { id: found.id },
+          data: { authority: approval.authority },
+        });
+        results.push(updated);
+      } else {
+        results.push(found);
+      }
+    } else {
+      // Calculate next due date from configured renewal period
+      const nextDueDate = new Date(now + renewalDays * 86_400_000);
+      const created = await prisma.complianceRequirement.create({
+        data: {
+          project_id: projectId,
+          name: defaultName,
+          authority: approval.authority,
+          frequency,
+          next_due_date: nextDueDate,
+          status: 'UPCOMING',
+          linked_approval_id: approval.id,
+        },
+      });
+      results.push(created);
+    }
+  }
+
+  return results;
 }
 
 export async function createComplianceRequirement(data: {

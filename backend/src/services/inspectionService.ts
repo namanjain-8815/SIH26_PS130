@@ -26,6 +26,94 @@ export async function listInspectorInspections(inspectorId: string) {
   });
 }
 
+export async function listInspectors() {
+  return prisma.user.findMany({
+    where: { role: 'INSPECTOR' },
+    select: { id: true, name: true, email: true, department_id: true },
+  });
+}
+
+export async function listPlannerInspections(filters: {
+  department_id?: string;
+  inspector_id?: string;
+  status?: string;
+  date_from?: string;
+  date_to?: string;
+}) {
+  const where: any = {};
+  if (filters.department_id) where.department_id = filters.department_id;
+  if (filters.inspector_id) where.inspector_id = filters.inspector_id;
+  if (filters.status) where.status = filters.status;
+
+  const rawInspections = await prisma.inspection.findMany({
+    where,
+    include: {
+      department: true,
+      inspector: { select: { id: true, name: true, email: true, department_id: true } },
+      application: {
+        include: {
+          project_approval: {
+            include: {
+              project: { include: { organization: true } },
+              approval_type: true,
+            },
+          },
+        },
+      },
+      findings: true,
+    },
+    orderBy: { scheduled_date: 'asc' },
+  });
+
+  // Filter in-memory for date ranges if provided
+  let filtered = rawInspections;
+  if (filters.date_from) {
+    const fromTime = new Date(filters.date_from).getTime();
+    filtered = filtered.filter((i) => new Date(i.scheduled_date).getTime() >= fromTime);
+  }
+  if (filters.date_to) {
+    const toTime = new Date(filters.date_to).getTime() + 86_400_000;
+    filtered = filtered.filter((i) => new Date(i.scheduled_date).getTime() <= toTime);
+  }
+
+  // Conflict detection:
+  // Detect inspectors assigned to multiple visits on the same date
+  const inspectionsByInspectorAndDay = new Map<string, typeof rawInspections>();
+
+  for (const insp of rawInspections) {
+    if (insp.inspector_id && insp.scheduled_date && insp.status !== 'CANCELLED') {
+      const dayKey = `${insp.inspector_id}_${new Date(insp.scheduled_date).toISOString().slice(0, 10)}`;
+      const list = inspectionsByInspectorAndDay.get(dayKey) ?? [];
+      list.push(insp);
+      inspectionsByInspectorAndDay.set(dayKey, list);
+    }
+  }
+
+  return filtered.map((insp) => {
+    let hasConflict = false;
+    let conflictReason: string | null = null;
+
+    if (insp.inspector_id && insp.scheduled_date && insp.status !== 'CANCELLED') {
+      const dayKey = `${insp.inspector_id}_${new Date(insp.scheduled_date).toISOString().slice(0, 10)}`;
+      const sameDay = inspectionsByInspectorAndDay.get(dayKey) ?? [];
+      if (sameDay.length > 1) {
+        hasConflict = true;
+        const otherApps = sameDay
+          .filter((i) => i.id !== insp.id)
+          .map((i) => i.application?.application_number ?? 'Application')
+          .join(', ');
+        conflictReason = `Inspector ${insp.inspector?.name ?? 'Assigned Officer'} has ${sameDay.length} site visits scheduled on this day (concurrent with ${otherApps}). Confirm travel and timeline feasibility.`;
+      }
+    }
+
+    return {
+      ...insp,
+      has_conflict: hasConflict,
+      conflict_reason: conflictReason,
+    };
+  });
+}
+
 export async function scheduleInspection(data: {
   application_id: string;
   department_id: string;
@@ -85,7 +173,10 @@ export async function updateInspection(
     status: 'SCHEDULED' | 'COMPLETED' | 'RESCHEDULED' | 'CANCELLED';
     scheduled_date: Date;
     notes?: string;
-    action?: 'confirm_readiness' | 'reschedule';
+    action?: 'confirm_readiness' | 'reschedule' | 'assign_inspector';
+    inspector_id?: string;
+    location?: string;
+    purpose?: string;
   }>
 ) {
   const inspection = await prisma.inspection.findUnique({ where: { id } });
@@ -99,10 +190,25 @@ export async function updateInspection(
       updateData.status = 'RESCHEDULED';
     }
     if (data.scheduled_date) updateData.scheduled_date = data.scheduled_date;
+    if (data.inspector_id !== undefined) updateData.inspector_id = data.inspector_id;
+    if (data.location !== undefined) updateData.location = data.location;
+    if (data.purpose !== undefined) updateData.purpose = data.purpose;
 
     const updated = Object.keys(updateData).length > 0
       ? await tx.inspection.update({ where: { id }, data: updateData })
       : inspection;
+
+    if (data.action === 'assign_inspector' || (data.inspector_id && data.inspector_id !== inspection.inspector_id)) {
+      const assignedInspector = await tx.user.findUnique({ where: { id: data.inspector_id } });
+      await tx.applicationEvent.create({
+        data: {
+          application_id: inspection.application_id,
+          actor_id: actorId,
+          event_type: 'inspector_assigned',
+          notes: `Designated Inspection Officer ${assignedInspector?.name ?? data.inspector_id} assigned for site verification.`,
+        },
+      });
+    }
 
     if (data.action === 'confirm_readiness') {
       await tx.applicationEvent.create({

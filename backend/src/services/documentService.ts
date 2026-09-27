@@ -45,15 +45,16 @@ export async function getDocument(id: string) {
   });
   if (!doc) throw new NotFoundError('Document not found');
 
-  const reuseCount = doc.application_documents.length;
+  const appDocs = doc.application_documents || [];
+  const reuseCount = appDocs.length;
 
   return {
     ...doc,
     reuse_count: reuseCount,
-    reused_by: doc.application_documents.map((ad) => ({
+    reused_by: appDocs.map((ad: any) => ({
       application_id: ad.application_id,
-      application_number: ad.application.application_number,
-      approval_name: ad.application.project_approval.approval_type.name,
+      application_number: ad.application?.application_number,
+      approval_name: ad.application?.project_approval?.approval_type?.name,
       validation_status: ad.validation_status,
     })),
   };

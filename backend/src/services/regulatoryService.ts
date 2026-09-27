@@ -2,6 +2,7 @@ import { prisma } from '../lib/prisma';
 import { evaluateProjectAgainstRules } from '../rule-engine/evaluate';
 import { EvaluableRule, ProjectProfile } from '../rule-engine/types';
 import { NotFoundError } from '../lib/errors';
+import { deriveComplianceObligations } from './complianceService';
 
 /**
  * POST /api/projects/:id/regulatory-analysis (plan §7, §13, §31).
@@ -72,6 +73,10 @@ export async function runRegulatoryAnalysis(projectId: string) {
         prerequisite_approval_type_id: { in: approvalResult.applicableApprovals },
         dependent_approval_type_id: { in: approvalResult.applicableApprovals },
       },
+      include: {
+        prerequisite_approval: true,
+        dependent_approval: true,
+      },
     }),
   ]);
 
@@ -104,14 +109,40 @@ export async function runRegulatoryAnalysis(projectId: string) {
     );
   }
 
-  // TODO (plan §24): also derive ComplianceRequirement rows here for any
-  // matched ApprovalType with a renewal_period_days set.
+  // Derive ComplianceRequirement rows for any matched ApprovalType with a renewal_period_days set (P0.5)
+  await deriveComplianceObligations(projectId, approvals);
+
+  const prerequisiteTargetIds = new Set(
+    dependencies
+      .filter((d) => d.dependency_type === 'PREREQUISITE')
+      .map((d) => d.dependent_approval_type_id)
+  );
+
+  const enrichedApprovals = approvals.map((a) => ({
+    ...a,
+    applicability_reason: approvalResult.reasons[a.id] ?? 'Applicable based on registered project profile',
+    can_proceed_in_parallel: !prerequisiteTargetIds.has(a.id),
+    prerequisites: dependencies
+      .filter((d) => d.dependent_approval_type_id === a.id && d.dependency_type === 'PREREQUISITE')
+      .map((d) => ({
+        id: d.prerequisite_approval_type_id,
+        name: (d as any).prerequisite_approval?.name ?? d.prerequisite_approval_type_id,
+      })),
+  }));
 
   return {
-    approvals,
+    approvals: enrichedApprovals,
+    reasons: approvalResult.reasons,
     documents: documentRequirements,
     dependencies,
     incentives: incentiveMatches.map((m) => ({ scheme: m.scheme, reason: m.reason })),
     warnings: approvalResult.warnings,
+    summary: {
+      total: enrichedApprovals.length,
+      parallel_count: enrichedApprovals.filter((a) => a.can_proceed_in_parallel).length,
+      prerequisite_dependent_count: enrichedApprovals.filter((a) => !a.can_proceed_in_parallel).length,
+      documents_count: documentRequirements.length,
+      incentives_count: incentiveMatches.length,
+    },
   };
 }

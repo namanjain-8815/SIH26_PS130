@@ -1,4 +1,5 @@
 import { prisma } from '../lib/prisma';
+import { calculateScrutinyPriority } from './scrutinyPriorityService';
 
 /**
  * GET /api/government/work-queue
@@ -54,37 +55,107 @@ export async function getWorkQueue(filters: {
     include: {
       project_approval: {
         include: {
-          project: { include: { organization: true } },
-          approval_type: true,
+          project: {
+            include: {
+              organization: true,
+              project_approvals: {
+                include: { approval_type: true },
+              },
+            },
+          },
+          approval_type: {
+            include: {
+              document_requirements: true,
+              dependent_on: true,
+            },
+          },
         },
       },
       department: true,
       sla_instance: true,
       queries: { where: { status: { in: ['OPEN', 'RESPONDED'] } } },
-      inspections: { where: { status: 'SCHEDULED' } },
+      inspections: {
+        include: { findings: true },
+      },
+      application_documents: true,
     },
     orderBy: [{ submitted_at: 'asc' }],
   });
 
-  return apps.map((app) => ({
-    id: app.id,
-    application_number: app.application_number,
-    status: app.status,
-    submitted_at: app.submitted_at,
-    due_date: app.due_date,
-    approval_name: app.project_approval?.approval_type?.name ?? 'Unknown Approval',
-    approval_category: app.project_approval?.approval_type?.category ?? 'GENERAL',
-    priority: app.project_approval?.priority ?? 'MEDIUM',
-    org_name: app.project_approval?.project?.organization?.legal_name ?? 'Unknown Organization',
-    project_name: app.project_approval?.project?.name ?? 'Unknown Project',
-    district: app.project_approval?.project?.district ?? 'Unknown District',
-    department_id: app.department_id,
-    department_name: app.department?.name ?? 'Unknown Department',
-    sla_status: app.sla_instance?.status ?? null,
-    sla_due_date: app.sla_instance?.due_date ?? null,
-    open_queries: app.queries?.length ?? 0,
-    upcoming_inspections: app.inspections?.length ?? 0,
-  }));
+  return apps.map((app) => {
+    const approvalType = app.project_approval?.approval_type;
+    const project = app.project_approval?.project;
+    const reqDocs = approvalType?.document_requirements?.length ?? 0;
+    const upDocs = app.application_documents?.length ?? 0;
+
+    const dependentOn = approvalType?.dependent_on ?? [];
+    const projectApprovals = project?.project_approvals ?? [];
+    const paByTypeId = new Map(projectApprovals.map((pa) => [pa.approval_type_id, pa]));
+
+    const prerequisites = dependentOn
+      .filter((dep: any) => dep.dependency_type === 'PREREQUISITE')
+      .map((dep: any) => ({
+        id: dep.prerequisite_approval_type_id,
+        status: paByTypeId.get(dep.prerequisite_approval_type_id)?.status ?? 'NOT_STARTED',
+      }));
+
+    const distinctDepts = new Set<string>();
+    if (app.department_id) distinctDepts.add(app.department_id);
+    for (const pa of projectApprovals) {
+      if (pa.approval_type?.department_id) {
+        distinctDepts.add(pa.approval_type.department_id);
+      }
+    }
+
+    let adverseFindingsCount = 0;
+    const scheduledInspections = app.inspections ?? [];
+    for (const insp of scheduledInspections) {
+      for (const finding of insp.findings ?? []) {
+        if (
+          finding.severity === 'CRITICAL' ||
+          finding.severity === 'HIGH' ||
+          finding.status === 'NON_COMPLIANT'
+        ) {
+          adverseFindingsCount++;
+        }
+      }
+    }
+
+    const scrutinyPriority = calculateScrutinyPriority({
+      application_status: app.status,
+      required_documents_count: reqDocs,
+      uploaded_documents_count: upDocs,
+      prerequisites,
+      concerned_departments_count: Math.max(1, distinctDepts.size),
+      requires_inspection: approvalType?.requires_inspection ?? false,
+      scheduled_inspections_count: scheduledInspections.length,
+      open_queries_count: app.queries?.length ?? 0,
+      sla_status: app.sla_instance?.status ?? null,
+      sla_due_date: app.sla_instance?.due_date ?? null,
+      adverse_findings_count: adverseFindingsCount,
+    });
+
+    return {
+      id: app.id,
+      application_number: app.application_number,
+      status: app.status,
+      submitted_at: app.submitted_at,
+      due_date: app.due_date,
+      approval_name: app.project_approval?.approval_type?.name ?? 'Unknown Approval',
+      approval_category: app.project_approval?.approval_type?.category ?? 'GENERAL',
+      priority: app.project_approval?.priority ?? 'MEDIUM',
+      org_name: app.project_approval?.project?.organization?.legal_name ?? 'Unknown Organization',
+      project_name: app.project_approval?.project?.name ?? 'Unknown Project',
+      district: app.project_approval?.project?.district ?? 'Unknown District',
+      department_id: app.department_id,
+      department_name: app.department?.name ?? 'Unknown Department',
+      sla_status: app.sla_instance?.status ?? null,
+      sla_due_date: app.sla_instance?.due_date ?? null,
+      open_queries: app.queries?.length ?? 0,
+      upcoming_inspections: app.inspections?.length ?? 0,
+      scrutiny_priority: scrutinyPriority,
+    };
+  });
 }
 
 /**

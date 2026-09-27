@@ -33,6 +33,15 @@ router.get('/applications/:id', requireAuth, async (req, res, next) => {
   }
 });
 
+router.get('/applications/:id/scrutiny-priority', requireAuth, async (req, res, next) => {
+  try {
+    const { getApplicationScrutinyPriority } = await import('../services/scrutinyPriorityService');
+    res.json(await getApplicationScrutinyPriority(req.params.id));
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.get('/applications/:id/external-status', requireAuth, async (req, res, next) => {
   try {
     res.json(await applicationService.getSimulatedGatewayStatus(req.params.id));

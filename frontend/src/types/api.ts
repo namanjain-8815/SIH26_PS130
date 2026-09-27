@@ -94,6 +94,20 @@ export interface ProjectApprovalDetail {
     documents_attached: number;
   } | null;
   next_action: string;
+  prescribed_form?: PrescribedForm | null;
+}
+
+export interface PrescribedForm {
+  id: string;
+  form_name: string;
+  document_type: string;
+  source_label: string;
+  source_url?: string;
+  category: 'Statutory Prescribed Format' | 'Demonstration / Configurable Form';
+  version: string;
+  effective_date: string;
+  description: string;
+  file_name: string;
 }
 
 export interface ReadinessCheckResult {
@@ -105,6 +119,37 @@ export interface ReadinessCheckResult {
   warnings: string[];
   checks: Array<{ description: string; status: 'pass' | 'fail' | 'warn' }>;
   label: string;
+}
+
+export type ScrutinyPriorityLevel = 'LOW' | 'MEDIUM' | 'HIGH';
+
+export interface ScrutinyContributingFactor {
+  factor: string;
+  category: 'DOCUMENTATION' | 'DEPENDENCY' | 'MULTI_AGENCY' | 'INSPECTION' | 'CLARIFICATION' | 'SLA_TIMELINE' | 'FINDINGS';
+  severity: 'INFO' | 'MODERATE' | 'HIGH' | 'CRITICAL';
+  impact_score: number;
+}
+
+export interface ScrutinyPriorityResult {
+  level: ScrutinyPriorityLevel;
+  score: number;
+  label: string;
+  factors: string[];
+  contributing_factors?: ScrutinyContributingFactor[];
+  why: string;
+  metrics: {
+    missing_documents: number;
+    required_documents: number;
+    uploaded_documents: number;
+    prerequisite_count: number;
+    pending_prerequisites: number;
+    concerned_authorities: number;
+    requires_inspection: boolean;
+    open_queries: number;
+    sla_status: string | null;
+    critical_findings_count: number;
+  };
+  disclaimer: string;
 }
 
 export interface WorkQueueItem {
@@ -125,6 +170,7 @@ export interface WorkQueueItem {
   sla_due_date: string | null;
   open_queries: number;
   upcoming_inspections: number;
+  scrutiny_priority?: ScrutinyPriorityResult;
 }
 
 export interface AnalyticsSummary {
@@ -225,6 +271,7 @@ export interface ApplicationDetail {
   created_at: string;
   department_id: string;
   department: { id: string; name: string; state?: string; district?: string };
+  scrutiny_priority?: ScrutinyPriorityResult;
   project_approval: {
     id: string;
     project_id: string;
@@ -236,6 +283,7 @@ export interface ApplicationDetail {
       description?: string;
       default_sla_days?: number;
       document_requirements: Array<{ id: string; document_type: string; mandatory: boolean; condition?: string | null }>;
+      prescribed_form?: PrescribedForm | null;
     };
     project: {
       id: string;
@@ -243,6 +291,20 @@ export interface ApplicationDetail {
       sector: string;
       district: string;
       org_id: string;
+      type?: string | null;
+      investment_amount?: number;
+      employee_count?: number;
+      stage?: string;
+      industrial_area?: string | null;
+      address?: string | null;
+      target_start_date?: string | null;
+      organization?: {
+        id: string;
+        legal_name: string;
+        entity_type: string;
+        sector?: string;
+      } | null;
+      attributes?: Array<{ id?: string; key: string; value: string }>;
     };
   };
   application_documents: Array<{
@@ -265,4 +327,271 @@ export interface ApplicationDetail {
   }>;
   sla_instance: { id: string; status: string; due_date: string | null } | null;
   events: ApplicationTimelineEvent[];
+}
+
+export interface RegulatoryAnalysisResult {
+  approvals: Array<{
+    id: string;
+    name: string;
+    description: string;
+    purpose?: string;
+    authority: string;
+    category: string;
+    default_sla_days?: number;
+    requires_inspection?: boolean;
+    applicability_reason?: string;
+    can_proceed_in_parallel?: boolean;
+    prerequisites?: Array<{ id: string; name: string }>;
+  }>;
+  reasons: Record<string, string>;
+  documents: Array<{
+    id: string;
+    approval_type_id: string;
+    document_type: string;
+    name: string;
+    is_mandatory: boolean;
+  }>;
+  dependencies: Array<{
+    id: string;
+    prerequisite_approval_type_id: string;
+    dependent_approval_type_id: string;
+    dependency_type: string;
+    prerequisite_approval?: { id: string; name: string };
+    dependent_approval?: { id: string; name: string };
+  }>;
+  incentives: Array<{
+    scheme: {
+      id: string;
+      name: string;
+      authority: string;
+      benefit_description: string;
+    };
+    reason: string;
+  }>;
+  warnings: string[];
+  summary?: {
+    total: number;
+    parallel_count: number;
+    prerequisite_dependent_count: number;
+    documents_count: number;
+    incentives_count: number;
+  };
+}
+
+export type FacilitationCategory =
+  | 'Approval Guidance'
+  | 'Documentation Help'
+  | 'Application Processing Help'
+  | 'Incentive / Scheme Guidance'
+  | 'Compliance & Renewal Help'
+  | 'General Facilitation';
+
+export type FacilitationStatus = 'OPEN' | 'ASSIGNED' | 'IN_PROGRESS' | 'RESOLVED' | 'CLOSED';
+
+export interface FacilitationNote {
+  id: string;
+  author_id: string;
+  author_name: string;
+  author_role: string;
+  note: string;
+  created_at: string;
+  is_internal?: boolean;
+}
+
+export interface FacilitationTimelineItem {
+  event: string;
+  timestamp: string;
+  actor_name: string;
+  notes?: string;
+}
+
+export interface FacilitationRequest {
+  id: string;
+  reference: string;
+  applicant_id: string;
+  applicant_name: string;
+  applicant_email: string;
+  category: FacilitationCategory;
+  subject: string;
+  description: string;
+  project_id?: string | null;
+  project_name?: string | null;
+  application_id?: string | null;
+  application_number?: string | null;
+  priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
+  status: FacilitationStatus;
+  assigned_to?: string | null;
+  assigned_to_name?: string | null;
+  responsible_desk: string;
+  resolution_notes?: string | null;
+  notes: FacilitationNote[];
+  timeline: FacilitationTimelineItem[];
+  created_at: string;
+  updated_at: string;
+  resolved_at?: string | null;
+}
+
+export interface DocumentPreValidationCheck {
+  name: string;
+  status: 'pass' | 'fail' | 'warn';
+  detail: string;
+}
+
+export interface DocumentPreValidationResult {
+  accepted: boolean;
+  status: 'ACCEPTED' | 'REJECTED' | 'MANUAL_VERIFICATION_REQUIRED';
+  document_type: string;
+  file_name: string;
+  detected_type?: string;
+  errors: string[];
+  warnings: string[];
+  checks: DocumentPreValidationCheck[];
+  metadata?: {
+    file_name: string;
+    size_bytes: number;
+    extension: string;
+    is_scanned_or_image?: boolean;
+  };
+}
+
+export interface InspectorUser {
+  id: string;
+  name: string;
+  email: string;
+  department_id?: string | null;
+}
+
+export interface PlannerInspection {
+  id: string;
+  application_id: string;
+  department_id: string;
+  inspector_id?: string | null;
+  scheduled_date: string;
+  location?: string | null;
+  purpose?: string | null;
+  status: 'SCHEDULED' | 'COMPLETED' | 'RESCHEDULED' | 'CANCELLED';
+  has_conflict?: boolean;
+  conflict_reason?: string | null;
+  department: { id: string; name: string };
+  inspector?: { id: string; name: string; email: string; department_id?: string | null } | null;
+  application: {
+    id: string;
+    application_number: string;
+    status: string;
+    due_date: string | null;
+    project_approval?: {
+      approval_type?: { name: string; category?: string; authority: string };
+      project?: {
+        id: string;
+        name: string;
+        district: string;
+        industrial_area?: string | null;
+        address?: string | null;
+        organization?: { legal_name: string } | null;
+      };
+    };
+  };
+  findings?: Array<{
+    id: string;
+    severity: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+    description: string;
+    corrective_action?: string | null;
+    status: string;
+  }>;
+}
+
+export interface SubmissionCentreItem {
+  project_approval_id: string;
+  approval_name: string;
+  approval_category: string;
+  concerned_authority: string;
+  department_name?: string;
+  priority: string;
+  category: 'READY_TO_SUBMIT' | 'BLOCKED_BY_PREREQUISITES' | 'IN_PREPARATION' | 'SUBMITTED' | 'APPROVED';
+  application_id: string | null;
+  application_number: string | null;
+  application_status: string | null;
+  submitted_at: string | null;
+  prerequisites: Array<{
+    approval_type_id: string;
+    approval_name: string;
+    status: string;
+    is_satisfied: boolean;
+  }>;
+  has_unmet_prerequisites: boolean;
+  document_checklist: {
+    total_required: number;
+    mandatory_count: number;
+    uploaded_count: number;
+    reused_count: number;
+    missing_mandatory: string[];
+    reused_documents: Array<{
+      document_id: string;
+      document_type: string;
+      file_name: string;
+      verification_status: string;
+      reuse_count: number;
+    }>;
+    uploaded_documents: Array<{
+      document_id: string;
+      document_type: string;
+      file_name: string;
+      verification_status: string;
+      is_reused: boolean;
+    }>;
+  };
+  readiness: {
+    is_ready: boolean;
+    issues: string[];
+    warnings: string[];
+    can_submit: boolean;
+    blocker_reason?: string;
+  };
+  service_timeline: {
+    default_sla_days: number;
+    sla_status?: string | null;
+    due_date?: string | null;
+    label: string;
+  };
+  scrutiny_priority?: {
+    level: string;
+    label: string;
+    why: string;
+  } | null;
+}
+
+export interface ProjectSubmissionCentreData {
+  project: {
+    id: string;
+    name: string;
+    sector: string;
+    district: string;
+    stage: string;
+    organization: {
+      id: string;
+      legal_name: string;
+      entity_type: string;
+    };
+  };
+  metrics: {
+    total_clearances: number;
+    ready_to_submit: number;
+    blocked_by_prerequisites: number;
+    in_preparation: number;
+    submitted: number;
+    approved: number;
+    overall_readiness_percent: number;
+  };
+  clearances: SubmissionCentreItem[];
+}
+
+export interface SubmitApplicationResponse {
+  success: boolean;
+  application_id: string;
+  application_number: string;
+  status: string;
+  approval_name: string;
+  authority: string;
+  submitted_at: string;
+  message: string;
 }

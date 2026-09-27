@@ -15,6 +15,7 @@ import {
   ClipboardCheck,
   Calendar,
   Gift,
+  LifeBuoy,
   Bell,
   Settings,
   LogOut,
@@ -24,6 +25,7 @@ import {
 
 import { AuthLoadingState, PermissionDeniedState } from '@/components/ui/States';
 import { BhashiniSeamButton } from '@/components/ui/BhashiniSeam';
+import { ApplicationGuidanceAssistant } from '@/components/guidance/ApplicationGuidanceAssistant';
 
 const NAV = [
   { href: '/app/dashboard',   label: 'Dashboard',                 icon: LayoutDashboard },
@@ -33,6 +35,7 @@ const NAV = [
   { href: '/app/inspections', label: 'Site Inspections',          icon: ClipboardCheck },
   { href: '/app/compliance',  label: 'Compliance & Renewals',     icon: Calendar },
   { href: '/app/incentives',  label: 'Incentives & Schemes',      icon: Gift },
+  { href: '/app/assistance',  label: 'Investor Assistance',       icon: LifeBuoy },
   { href: '/app/notifications',label: 'Notifications',            icon: Bell, badge: true },
 ];
 
@@ -167,6 +170,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
         <div className="flex-1 p-6">{children}</div>
       </main>
+
+      {/* Contextual Application Guidance Assistant */}
+      <ApplicationGuidanceAssistant />
     </div>
   );
 }

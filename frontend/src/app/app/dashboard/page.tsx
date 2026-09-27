@@ -21,14 +21,27 @@ import {
 } from 'lucide-react';
 import { formatDate, formatCurrency } from '@/lib/utils';
 
+import { Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
+
 const DEMO_PROJECT_ID = 'proj-abc-foods-001';
 
 export default function DashboardPage() {
+  return (
+    <Suspense fallback={<div className="p-6"><CardSkeleton lines={4} /></div>}>
+      <DashboardContent />
+    </Suspense>
+  );
+}
+
+function DashboardContent() {
   const { user } = useAuth();
+  const searchParams = useSearchParams();
+  const projectId = searchParams.get('projectId') || DEMO_PROJECT_ID;
 
   const { data: cc, isLoading, error, refetch } = useQuery({
-    queryKey: ['control-centre', DEMO_PROJECT_ID],
-    queryFn: () => projectsApi.getControlCentre(DEMO_PROJECT_ID),
+    queryKey: ['control-centre', projectId],
+    queryFn: () => projectsApi.getControlCentre(projectId),
   });
 
   const hour = new Date().getHours();
@@ -120,7 +133,7 @@ export default function DashboardPage() {
             </div>
             <div className="flex items-center justify-between mt-3 text-xs text-gray-500">
               <span>{cc.approvals.completed} of {cc.approvals.total} permissions & approvals obtained</span>
-              <Link href={`/app/projects/${DEMO_PROJECT_ID}/dependency-graph`} className="text-primary-600 hover:underline font-medium">
+              <Link href={`/app/projects/${projectId}/dependency-graph`} className="text-primary-600 hover:underline font-medium">
                 View permission dependency map →
               </Link>
             </div>

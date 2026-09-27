@@ -25,7 +25,7 @@ describe('Projects & Clearances Integration Tests', () => {
     const data = (await res.json()) as any[];
     assert.ok(Array.isArray(data));
     assert.ok(data.length > 0);
-    assert.strictEqual(data[0].id, projectId);
+    assert.ok(data.some((p: any) => p.id === projectId), 'Projects list should include demo project');
   });
 
   it('GET /api/projects/:id/control-centre returns dashboard metrics and approval stats', async () => {

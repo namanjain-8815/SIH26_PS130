@@ -29,11 +29,42 @@ router.post('/inspections', requireAuth, requireRole('OFFICER', 'INSPECTOR', 'AD
   }
 });
 
-// Officer/inspector view per contract: GET /api/inspections?inspector_id=
+// Common Inspection Planner & Officer/Inspector view: GET /api/inspections
 router.get('/inspections', requireAuth, async (req, res, next) => {
   try {
     const inspectorId = req.query.inspector_id as string | undefined;
-    res.json(inspectorId ? await inspectionService.listInspectorInspections(inspectorId) : []);
+    const departmentId = req.query.department_id as string | undefined;
+    const status = req.query.status as string | undefined;
+    const dateFrom = req.query.date_from as string | undefined;
+    const dateTo = req.query.date_to as string | undefined;
+
+    let effectiveInspectorId = inspectorId;
+    if (req.user?.role === 'INSPECTOR' && !effectiveInspectorId && !departmentId) {
+      effectiveInspectorId = req.user.id;
+    }
+
+    let effectiveDeptId = departmentId;
+    if (req.user?.role === 'OFFICER' && !effectiveDeptId && req.user.department_id) {
+      effectiveDeptId = req.user.department_id;
+    }
+
+    res.json(
+      await inspectionService.listPlannerInspections({
+        inspector_id: effectiveInspectorId,
+        department_id: effectiveDeptId,
+        status,
+        date_from: dateFrom,
+        date_to: dateTo,
+      })
+    );
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/inspectors', requireAuth, async (_req, res, next) => {
+  try {
+    res.json(await inspectionService.listInspectors());
   } catch (err) {
     next(err);
   }

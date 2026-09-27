@@ -505,3 +505,61 @@ ALTER TABLE "AuditLog" ADD CONSTRAINT "AuditLog_actor_id_fkey" FOREIGN KEY ("act
 -- AddForeignKey
 ALTER TABLE "Notification" ADD CONSTRAINT "Notification_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
+-- CreateEnum
+CREATE TYPE "FacilitationCategory" AS ENUM (
+    'Approval Guidance',
+    'Documentation Help',
+    'Application Processing Help',
+    'Incentive / Scheme Guidance',
+    'Compliance & Renewal Help',
+    'General Facilitation'
+);
+
+-- CreateEnum
+CREATE TYPE "FacilitationStatus" AS ENUM (
+    'OPEN',
+    'ASSIGNED',
+    'IN_PROGRESS',
+    'RESOLVED',
+    'CLOSED'
+);
+
+-- CreateTable
+CREATE TABLE "FacilitationRequest" (
+    "id" TEXT NOT NULL,
+    "reference" TEXT NOT NULL,
+    "applicant_id" TEXT NOT NULL,
+    "category" TEXT NOT NULL,
+    "subject" TEXT NOT NULL,
+    "description" TEXT NOT NULL,
+    "project_id" TEXT,
+    "application_id" TEXT,
+    "priority" "Priority" NOT NULL DEFAULT 'MEDIUM',
+    "status" "FacilitationStatus" NOT NULL DEFAULT 'OPEN',
+    "assigned_to" TEXT,
+    "responsible_desk" TEXT NOT NULL DEFAULT 'MAITRI Single Window Nodal Cell',
+    "resolution_notes" TEXT,
+    "notes" JSONB NOT NULL DEFAULT '[]'::jsonb,
+    "timeline" JSONB NOT NULL DEFAULT '[]'::jsonb,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "resolved_at" TIMESTAMP(3),
+
+    CONSTRAINT "FacilitationRequest_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateIndex
+CREATE UNIQUE INDEX "FacilitationRequest_reference_key" ON "FacilitationRequest"("reference");
+
+-- AddForeignKey
+ALTER TABLE "FacilitationRequest" ADD CONSTRAINT "FacilitationRequest_applicant_id_fkey" FOREIGN KEY ("applicant_id") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "FacilitationRequest" ADD CONSTRAINT "FacilitationRequest_assigned_to_fkey" FOREIGN KEY ("assigned_to") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "FacilitationRequest" ADD CONSTRAINT "FacilitationRequest_project_id_fkey" FOREIGN KEY ("project_id") REFERENCES "Project"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "FacilitationRequest" ADD CONSTRAINT "FacilitationRequest_application_id_fkey" FOREIGN KEY ("application_id") REFERENCES "Application"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+

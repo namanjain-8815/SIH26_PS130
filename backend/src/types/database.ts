@@ -459,3 +459,56 @@ export interface Notification {
   created_at: Date | string;
   user?: User;
 }
+
+export type FacilitationCategory =
+  | 'Approval Guidance'
+  | 'Documentation Help'
+  | 'Application Processing Help'
+  | 'Incentive / Scheme Guidance'
+  | 'Compliance & Renewal Help'
+  | 'General Facilitation';
+
+export type FacilitationStatus = 'OPEN' | 'ASSIGNED' | 'IN_PROGRESS' | 'RESOLVED' | 'CLOSED';
+
+export interface FacilitationNote {
+  id: string;
+  author_id: string;
+  author_name: string;
+  author_role: string;
+  note: string;
+  created_at: string;
+  is_internal?: boolean;
+}
+
+export interface FacilitationTimelineItem {
+  event: string;
+  timestamp: string;
+  actor_name: string;
+  notes?: string;
+}
+
+export interface FacilitationRequest {
+  id: string;
+  reference: string;
+  applicant_id: string;
+  applicant_name: string;
+  applicant_email: string;
+  category: FacilitationCategory;
+  subject: string;
+  description: string;
+  project_id?: string | null;
+  project_name?: string | null;
+  application_id?: string | null;
+  application_number?: string | null;
+  priority: Priority;
+  status: FacilitationStatus;
+  assigned_to?: string | null;
+  assigned_to_name?: string | null;
+  responsible_desk: string;
+  resolution_notes?: string | null;
+  notes: FacilitationNote[];
+  timeline: FacilitationTimelineItem[];
+  created_at: string;
+  updated_at: string;
+  resolved_at?: string | null;
+}
