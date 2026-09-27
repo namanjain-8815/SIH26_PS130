@@ -20,7 +20,7 @@ const NAV = [
   { href: '/government/sla-monitor', label: 'Specified Time Limits',    icon: Clock },
   { href: '/government/bottlenecks', label: 'Bottlenecks & Delays',     icon: AlertTriangle },
   { href: '/government/analytics',   label: 'Scrutiny Analytics',       icon: BarChart3 },
-  { href: '/app/notifications',      label: 'Notifications',            icon: Bell, badge: true },
+  { href: '/government/notifications', label: 'Notifications',            icon: Bell, badge: true },
 ];
 
 export default function GovernmentLayout({ children }: { children: React.ReactNode }) {
@@ -134,17 +134,18 @@ export default function GovernmentLayout({ children }: { children: React.ReactNo
               </Link>
             );
           })}
-
-          <div className="pt-3 mt-3 border-t border-sidebar-border/30">
-            <button onClick={handleLogout} className="sidebar-link w-full text-left text-red-400 hover:text-red-300 hover:bg-red-900/20">
-              <LogOut className="w-4 h-4 flex-shrink-0" />
-              <span>Logout</span>
-            </button>
-          </div>
         </nav>
 
+        {/* Logout immediately above user profile */}
+        <div className="px-3 pt-3 border-t border-sidebar-border/30">
+          <button onClick={handleLogout} className="sidebar-link w-full text-left text-red-400 hover:text-red-300 hover:bg-red-900/20">
+            <LogOut className="w-4 h-4 flex-shrink-0" />
+            <span>Logout</span>
+          </button>
+        </div>
+
         {user && (
-          <div className="px-3 py-4 border-t border-sidebar-border/30">
+          <div className="px-3 py-3 border-t border-sidebar-border/30">
             <div className="flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-sidebar-active cursor-pointer">
               <div className="w-8 h-8 rounded-full bg-blue-700 flex items-center justify-center flex-shrink-0">
                 <span className="text-white text-xs font-semibold">{user.name.charAt(0)}</span>

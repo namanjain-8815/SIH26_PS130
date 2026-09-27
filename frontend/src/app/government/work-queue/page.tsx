@@ -7,7 +7,8 @@ import { ErrorState, TableRowSkeleton, EmptyState } from '@/components/ui/States
 import { formatDate, formatDateTime } from '@/lib/utils';
 import { useAuth } from '@/lib/auth-context';
 import { formatRole } from '@/lib/terminology';
-import { useState } from 'react';
+import { useState, useEffect, Suspense } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import type { WorkQueueItem } from '@/types/api';
 import {
   Clock,
@@ -33,12 +34,35 @@ const STATUS_OPTIONS = ['', 'SUBMITTED', 'UNDER_REVIEW', 'QUERY_RAISED', 'INSPEC
 const PRIORITY_OPTIONS = ['', 'CRITICAL', 'HIGH', 'MEDIUM', 'LOW'];
 
 export default function WorkQueuePage() {
+  return (
+    <Suspense fallback={<div className="p-6 text-xs text-gray-500">Loading Work Queue...</div>}>
+      <WorkQueueContent />
+    </Suspense>
+  );
+}
+
+function WorkQueueContent() {
   const { user } = useAuth();
   const qc = useQueryClient();
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const targetAppId = searchParams?.get('application_id');
+
   const [status, setStatus] = useState('');
   const [priority, setPriority] = useState('');
   const [departmentFilter, setDepartmentFilter] = useState('');
   const [selected, setSelected] = useState<WorkQueueItem | null>(null);
+
+  // Inspector-specific modals and state
+  const [showRecordFindingModal, setShowRecordFindingModal] = useState(false);
+  const [targetInspectionId, setTargetInspectionId] = useState<string | null>(null);
+  const [findingSeverity, setFindingSeverity] = useState<'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL'>('LOW');
+  const [findingDesc, setFindingDesc] = useState('');
+  const [findingCorrective, setFindingCorrective] = useState('');
+
+  const [showRescheduleModal, setShowRescheduleModal] = useState(false);
+  const [rescheduleDate, setRescheduleDate] = useState('');
+  const [rescheduleNotes, setRescheduleNotes] = useState('');
 
   // Modals state
   const [showRaiseQueryModal, setShowRaiseQueryModal] = useState(false);
@@ -186,6 +210,44 @@ export default function WorkQueuePage() {
     },
   });
 
+  // Record inspection finding mutation
+  const recordFindingMutation = useMutation({
+    mutationFn: ({ inspectionId, data }: { inspectionId: string; data: any }) =>
+      inspectionsApi.recordFinding(inspectionId, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['application-detail', selected?.id] });
+      qc.invalidateQueries({ queryKey: ['work-queue'] });
+      setShowRecordFindingModal(false);
+      setTargetInspectionId(null);
+      setFindingDesc('');
+      setFindingCorrective('');
+      setFindingSeverity('LOW');
+    },
+  });
+
+  // Complete inspection mutation
+  const completeInspectionMutation = useMutation({
+    mutationFn: (inspId: string) => inspectionsApi.update(inspId, { status: 'COMPLETED' }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['application-detail', selected?.id] });
+      qc.invalidateQueries({ queryKey: ['work-queue'] });
+    },
+  });
+
+  // Reschedule inspection mutation
+  const rescheduleInspectionMutation = useMutation({
+    mutationFn: ({ inspId, scheduledDate, notes }: { inspId: string; scheduledDate: string; notes?: string }) =>
+      inspectionsApi.update(inspId, { action: 'reschedule', scheduled_date: new Date(scheduledDate), notes }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['application-detail', selected?.id] });
+      qc.invalidateQueries({ queryKey: ['work-queue'] });
+      setShowRescheduleModal(false);
+      setTargetInspectionId(null);
+      setRescheduleDate('');
+      setRescheduleNotes('');
+    },
+  });
+
   const items = data ?? [];
 
   // Authority role checks
@@ -193,6 +255,52 @@ export default function WorkQueuePage() {
   const isNodal = user?.role === 'NODAL';
   const isAdmin = user?.role === 'ADMIN';
   const isInspector = user?.role === 'INSPECTOR';
+
+  // For INSPECTOR: Prioritize applications with assigned or scheduled inspections
+  const displayItems = isInspector
+    ? [...items].sort((a, b) => {
+        const aScore = (a.status === 'INSPECTION_SCHEDULED' ? 2 : 0) + ((a as any).upcoming_inspections > 0 ? 1 : 0);
+        const bScore = (b.status === 'INSPECTION_SCHEDULED' ? 2 : 0) + ((b as any).upcoming_inspections > 0 ? 1 : 0);
+        return bScore - aScore;
+      })
+    : items;
+
+  // Auto-open application if application_id is passed in search params
+  const { data: directApp } = useQuery({
+    queryKey: ['direct-application', targetAppId],
+    queryFn: () => applicationsApi.get(targetAppId!),
+    enabled: !!targetAppId && !items.some((i) => i.id === targetAppId || i.application_number === targetAppId),
+  });
+
+  useEffect(() => {
+    if (!targetAppId) return;
+    const match = items.find(
+      (i) => i.id === targetAppId || i.application_number === targetAppId
+    );
+    if (match) {
+      setSelected(match);
+    } else if (directApp) {
+      setSelected({
+        id: directApp.id,
+        application_number: directApp.application_number,
+        approval_name: directApp.project_approval?.approval_type?.name ?? (directApp as any).approval_name ?? 'Application',
+        approval_category: directApp.project_approval?.approval_type?.category ?? 'Statutory',
+        org_name: (directApp.project_approval?.project as any)?.organization?.legal_name ?? (directApp as any).org_name ?? 'Applicant Entity',
+        project_name: directApp.project_approval?.project?.name ?? (directApp as any).project_name ?? 'Investment Proposal',
+        district: directApp.project_approval?.project?.district ?? (directApp as any).district ?? 'General',
+        department_name: directApp.department?.name ?? 'Concerned Department',
+        department_id: directApp.department_id,
+        status: directApp.status,
+        priority: (directApp as any).project_approval?.priority ?? (directApp as any).priority ?? 'MEDIUM',
+        submitted_at: directApp.submitted_at ?? directApp.created_at,
+        due_date: directApp.due_date ?? null,
+        sla_status: directApp.sla_instance?.status ?? null,
+        sla_due_date: directApp.sla_instance?.due_date ?? directApp.due_date ?? null,
+        open_queries: directApp.queries?.filter((q: any) => q.status === 'OPEN' || q.status === 'RESPONDED').length ?? 0,
+        upcoming_inspections: directApp.inspections?.length ?? 0,
+      });
+    }
+  }, [targetAppId, items, directApp]);
 
   const isOwnDepartment =
     isAdmin ||
@@ -209,7 +317,9 @@ export default function WorkQueuePage() {
         <div className="px-5 pt-5 pb-3 border-b border-gray-100">
           <div className="flex items-center justify-between mb-1">
             <div className="flex items-center gap-2">
-              <h1 className="text-lg font-bold text-gray-900">Competent Authority Work Queue</h1>
+              <h1 className="text-lg font-bold text-gray-900">
+                {isInspector ? 'Designated Inspection Officer Work Queue' : 'Competent Authority Work Queue'}
+              </h1>
               <span className="text-[10px] font-semibold bg-blue-50 text-blue-700 px-2 py-0.5 rounded border border-blue-200">
                 PROTOTYPE
               </span>
@@ -233,6 +343,16 @@ export default function WorkQueuePage() {
               <span className="w-2 h-2 rounded-full bg-purple-500 animate-pulse" />
               MAITRI Single Window Nodal Oversight · Cross-Department Monitoring
             </p>
+          ) : user?.role === 'INSPECTOR' ? (
+            <div className="flex items-center gap-2 mb-3">
+              <div className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-purple-50 border border-purple-200 rounded-lg text-xs font-semibold text-purple-900">
+                <CheckCircle2 className="w-3.5 h-3.5 text-purple-700" />
+                <span>Designated Inspection Desk: Site Verification & Findings</span>
+                <span className="inline-flex items-center gap-1 text-[10px] bg-purple-200/60 text-purple-800 px-1.5 py-0.5 rounded font-bold ml-1">
+                  Field Inspection Mandate
+                </span>
+              </div>
+            </div>
           ) : null}
 
           {/* Filters */}
@@ -285,17 +405,17 @@ export default function WorkQueuePage() {
         {/* Table */}
         <div className="flex-1 overflow-y-auto">
           {error && <ErrorState message={(error as Error).message} onRetry={() => refetch()} />}
-          {!isLoading && items.length === 0 && (
+          {!isLoading && displayItems.length === 0 && (
             <EmptyState
-              title="Competent Authority work queue is empty"
+              title={isInspector ? "Inspection work queue is empty" : "Competent Authority work queue is empty"}
               description="No applications match the current jurisdiction and filters."
             />
           )}
           <table className="w-full">
-            {items.length > 0 && (
+            {displayItems.length > 0 && (
               <thead className="sticky top-0 bg-white border-b border-gray-100 z-10">
                 <tr>
-                  {['Application Ref', 'Permission / Authority', 'Applicant Entity', 'Status', 'Specified Time Limit', 'Queries'].map(
+                  {['Application Ref', 'Permission / Authority', 'Applicant Entity', 'Status', 'Specified Time Limit', isInspector ? 'Site Visit' : 'Queries'].map(
                     (h) => (
                       <th
                         key={h}
@@ -310,7 +430,7 @@ export default function WorkQueuePage() {
             )}
             <tbody className="divide-y divide-gray-50">
               {isLoading && [...Array(6)].map((_, i) => <TableRowSkeleton key={i} cols={6} />)}
-              {items.map((item) => (
+              {displayItems.map((item) => (
                 <tr
                   key={item.id}
                   onClick={() => setSelected(selected?.id === item.id ? null : item)}
@@ -321,6 +441,11 @@ export default function WorkQueuePage() {
                   <td className="px-4 py-3">
                     <p className="text-sm font-mono font-medium text-gray-900">{item.application_number}</p>
                     <p className="text-xs text-gray-400 mt-0.5">{item.district}</p>
+                    {(item.status === 'INSPECTION_SCHEDULED' || (item as any).upcoming_inspections > 0) && (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-purple-100 text-purple-800 px-1.5 py-0.5 rounded border border-purple-200 mt-1">
+                        <CheckCircle2 className="w-3 h-3 text-purple-600" /> Inspection
+                      </span>
+                    )}
                   </td>
                   <td className="px-4 py-3">
                     <p className="text-xs font-semibold text-gray-900 max-w-[150px] truncate">{item.approval_name}</p>
@@ -346,12 +471,22 @@ export default function WorkQueuePage() {
                     )}
                   </td>
                   <td className="px-4 py-3">
-                    {item.open_queries > 0 ? (
-                      <span className="inline-flex items-center gap-1 text-xs text-orange-700 bg-orange-50 px-2 py-0.5 rounded-full font-bold">
-                        <AlertCircle className="w-3 h-3" /> {item.open_queries}
-                      </span>
+                    {isInspector ? (
+                      (item.status === 'INSPECTION_SCHEDULED' || (item as any).upcoming_inspections > 0) ? (
+                        <span className="text-xs font-bold text-purple-700 bg-purple-50 px-2 py-0.5 rounded-full">
+                          Assigned
+                        </span>
+                      ) : (
+                        <span className="text-xs text-gray-400">—</span>
+                      )
                     ) : (
-                      <span className="text-xs text-gray-400">—</span>
+                      item.open_queries > 0 ? (
+                        <span className="inline-flex items-center gap-1 text-xs text-orange-700 bg-orange-50 px-2 py-0.5 rounded-full font-bold">
+                          <AlertCircle className="w-3 h-3" /> {item.open_queries}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-gray-400">—</span>
+                      )
                     )}
                   </td>
                 </tr>
@@ -371,7 +506,12 @@ export default function WorkQueuePage() {
                 <p className="text-xs text-gray-400 font-mono mt-0.5">{selected.application_number}</p>
               </div>
               <button
-                onClick={() => setSelected(null)}
+                onClick={() => {
+                  setSelected(null);
+                  if (targetAppId) {
+                    router.replace('/government/work-queue');
+                  }
+                }}
                 className="text-gray-400 hover:text-gray-600 text-sm font-semibold p-1"
               >
                 ✕ Close
@@ -483,6 +623,150 @@ export default function WorkQueuePage() {
                   <span className="font-semibold text-gray-500 italic">
                     Restricted to {selected.department_name}
                   </span>
+                </div>
+              </div>
+            ) : isInspector ? (
+              /* Designated Inspection Officer Panel */
+              <div className="card p-4 space-y-3.5 border-purple-200 bg-purple-50/20">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-bold text-purple-950">Designated Inspection Desk — Verification & Findings</p>
+                    <p className="text-[11px] text-purple-700">Physical site verification, infrastructure assessment, and defect tracking</p>
+                  </div>
+                  <span className="text-[10px] font-bold bg-purple-100 text-purple-800 px-2 py-0.5 rounded border border-purple-200">
+                    Inspection Mandate
+                  </span>
+                </div>
+
+                <div className="p-2.5 bg-white rounded-lg border border-purple-100 text-[11px] text-gray-600 leading-relaxed">
+                  <span className="font-semibold text-purple-900">Statutory Scrutiny Boundary: </span>
+                  Inspection Officers verify physical site readiness and log inspection findings. Statutory approval or rejection decisions are legally reserved for the Concerned Competent Authority (<span className="font-semibold text-gray-800">{selected.department_name}</span>).
+                </div>
+
+                {/* Assigned Inspections on this Application */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-gray-800 uppercase tracking-wide">
+                      Assigned Site Inspections ({selectedAppDetail?.inspections?.length ?? 0})
+                    </span>
+                    <button
+                      onClick={() => {
+                        setInspectionLocation(`${selected.project_name}, ${selected.district}`);
+                        setShowScheduleInspectionModal(true);
+                      }}
+                      className="text-xs font-semibold text-purple-700 hover:text-purple-900 bg-purple-100/70 hover:bg-purple-200/70 px-2.5 py-1 rounded-md transition-colors flex items-center gap-1"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Schedule Joint Visit</span>
+                    </button>
+                  </div>
+
+                  {(!selectedAppDetail?.inspections || selectedAppDetail.inspections.length === 0) ? (
+                    <div className="p-3 bg-white rounded-lg border border-gray-100 text-center">
+                      <p className="text-xs text-gray-400 italic">No site inspection records currently logged for this application.</p>
+                    </div>
+                  ) : (
+                    selectedAppDetail.inspections.map((insp: any) => (
+                      <div key={insp.id} className="p-3.5 bg-white rounded-xl border border-purple-100 shadow-sm space-y-2.5 text-xs">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold text-gray-900 font-mono text-[11px]">
+                              {insp.id}
+                            </span>
+                            <StatusBadge status={insp.status} size="sm" />
+                          </div>
+                          {insp.status !== 'COMPLETED' && (
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                onClick={() => {
+                                  setTargetInspectionId(insp.id);
+                                  setRescheduleDate(insp.scheduled_date ? new Date(insp.scheduled_date).toISOString().slice(0, 16) : '');
+                                  setShowRescheduleModal(true);
+                                }}
+                                className="px-2 py-0.5 text-[11px] font-semibold text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded"
+                              >
+                                Reschedule
+                              </button>
+                              <button
+                                onClick={() => completeInspectionMutation.mutate(insp.id)}
+                                disabled={completeInspectionMutation.isPending}
+                                className="px-2.5 py-0.5 text-[11px] font-bold text-green-700 bg-green-50 hover:bg-green-100 border border-green-200 rounded"
+                              >
+                                ✓ Complete Visit
+                              </button>
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2 text-gray-600 bg-gray-50/60 p-2.5 rounded-lg text-[11px]">
+                          <div>
+                            <span className="text-gray-400">Scheduled Date: </span>
+                            <span className="font-medium text-gray-800">{formatDateTime(insp.scheduled_date)}</span>
+                          </div>
+                          <div>
+                            <span className="text-gray-400">Location: </span>
+                            <span className="font-medium text-gray-800">{insp.location || 'Site TBD'}</span>
+                          </div>
+                          <div className="col-span-2">
+                            <span className="text-gray-400">Purpose / Scope: </span>
+                            <span className="font-medium text-gray-800">{insp.purpose || 'General site verification'}</span>
+                          </div>
+                          <div className="col-span-2 pt-1 border-t border-gray-200/50 flex items-center justify-between">
+                            <span className="text-gray-400">Site Readiness Status: </span>
+                            <span className="font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                              {insp.status === 'COMPLETED' ? 'Inspection Concluded' : 'Applicant Readiness Confirmed'}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Findings list */}
+                        <div className="space-y-1.5 pt-1">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[11px] font-bold text-gray-700 uppercase">
+                              Verification Findings ({insp.findings?.length ?? 0})
+                            </span>
+                            <button
+                              onClick={() => {
+                                setTargetInspectionId(insp.id);
+                                setShowRecordFindingModal(true);
+                              }}
+                              className="text-[11px] font-semibold text-purple-700 hover:text-purple-900 bg-purple-50 hover:bg-purple-100 border border-purple-200 px-2 py-0.5 rounded flex items-center gap-1"
+                            >
+                              <Plus className="w-3 h-3" />
+                              <span>Record Finding</span>
+                            </button>
+                          </div>
+
+                          {(!insp.findings || insp.findings.length === 0) ? (
+                            <p className="text-[11px] text-gray-400 italic">No defects or observations recorded for this visit.</p>
+                          ) : (
+                            insp.findings.map((f: any) => (
+                              <div key={f.id} className="p-2.5 rounded-lg border border-gray-100 bg-white space-y-1">
+                                <div className="flex items-center justify-between">
+                                  <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded border ${
+                                    f.severity === 'CRITICAL' ? 'bg-red-50 text-red-700 border-red-200' :
+                                    f.severity === 'HIGH' ? 'bg-orange-50 text-orange-700 border-orange-200' :
+                                    f.severity === 'MEDIUM' ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                                    'bg-blue-50 text-blue-700 border-blue-200'
+                                  }`}>
+                                    {f.severity} SEVERITY
+                                  </span>
+                                  <StatusBadge status={f.status || 'OPEN'} size="sm" />
+                                </div>
+                                <p className="text-gray-800 text-xs">{f.description}</p>
+                                {f.corrective_action && (
+                                  <p className="text-[11px] text-gray-500">
+                                    <span className="font-semibold text-gray-600">Corrective Action: </span>
+                                    {f.corrective_action}
+                                  </p>
+                                )}
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                    ))
+                  )}
                 </div>
               </div>
             ) : (
@@ -1069,6 +1353,164 @@ export default function WorkQueuePage() {
                 className="btn-primary text-xs py-1.5 bg-blue-700 hover:bg-blue-800"
               >
                 {scheduleInspectionMutation.isPending ? 'Scheduling...' : 'Schedule Inspection'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: Record Inspection Finding (Inspector) */}
+      {showRecordFindingModal && targetInspectionId && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-gray-100">
+              <h3 className="text-sm font-bold text-gray-900">Record Inspection Finding / Observation</h3>
+              <button
+                onClick={() => {
+                  setShowRecordFindingModal(false);
+                  setTargetInspectionId(null);
+                }}
+                className="text-gray-400 hover:text-gray-600 text-lg"
+              >
+                ×
+              </button>
+            </div>
+            <p className="text-xs text-gray-500">
+              Record physical site observations, regulatory defect severities, and mandated corrective actions.
+            </p>
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="font-semibold text-gray-700">Observation Severity Level</label>
+                <select
+                  value={findingSeverity}
+                  onChange={(e) => setFindingSeverity(e.target.value as any)}
+                  className="input-base text-xs mt-1"
+                >
+                  <option value="LOW">Low (Informational / Minor deviation)</option>
+                  <option value="MEDIUM">Medium (Requires rectification)</option>
+                  <option value="HIGH">High (Major safety / environmental risk)</option>
+                  <option value="CRITICAL">Critical (Non-negotiable statutory violation)</option>
+                </select>
+              </div>
+              <div>
+                <label className="font-semibold text-gray-700">Finding Description / Field Notes *</label>
+                <textarea
+                  rows={3}
+                  value={findingDesc}
+                  onChange={(e) => setFindingDesc(e.target.value)}
+                  placeholder="Describe specific physical conditions observed on site..."
+                  className="input-base text-xs mt-1"
+                />
+              </div>
+              <div>
+                <label className="font-semibold text-gray-700">Mandated Corrective Action (optional)</label>
+                <textarea
+                  rows={2}
+                  value={findingCorrective}
+                  onChange={(e) => setFindingCorrective(e.target.value)}
+                  placeholder="Specify rectification or compliance milestone required before clearance..."
+                  className="input-base text-xs mt-1"
+                />
+              </div>
+            </div>
+            <div className="pt-3 border-t border-gray-100 flex justify-end gap-2">
+              <button
+                onClick={() => {
+                  setShowRecordFindingModal(false);
+                  setTargetInspectionId(null);
+                }}
+                className="btn-secondary text-xs py-1.5"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  if (findingDesc.trim()) {
+                    recordFindingMutation.mutate({
+                      inspectionId: targetInspectionId,
+                      data: {
+                        severity: findingSeverity,
+                        description: findingDesc.trim(),
+                        corrective_action: findingCorrective.trim() || undefined,
+                        status: 'OPEN',
+                      },
+                    });
+                  }
+                }}
+                disabled={!findingDesc.trim() || recordFindingMutation.isPending}
+                className="btn-primary text-xs py-1.5 bg-purple-700 hover:bg-purple-800"
+              >
+                {recordFindingMutation.isPending ? 'Logging Finding...' : 'Record Finding'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: Reschedule Site Inspection (Inspector) */}
+      {showRescheduleModal && targetInspectionId && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-gray-100">
+              <h3 className="text-sm font-bold text-gray-900">Reschedule Site Inspection</h3>
+              <button
+                onClick={() => {
+                  setShowRescheduleModal(false);
+                  setTargetInspectionId(null);
+                }}
+                className="text-gray-400 hover:text-gray-600 text-lg"
+              >
+                ×
+              </button>
+            </div>
+            <p className="text-xs text-gray-500">
+              Update the scheduled date and time for the physical site visit.
+            </p>
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="font-semibold text-gray-700">Revised Inspection Date & Time *</label>
+                <input
+                  type="datetime-local"
+                  value={rescheduleDate}
+                  onChange={(e) => setRescheduleDate(e.target.value)}
+                  className="input-base text-xs mt-1"
+                />
+              </div>
+              <div>
+                <label className="font-semibold text-gray-700">Reason for Rescheduling</label>
+                <textarea
+                  rows={2}
+                  value={rescheduleNotes}
+                  onChange={(e) => setRescheduleNotes(e.target.value)}
+                  placeholder="e.g. Inclement weather, site readiness delay, or applicant request"
+                  className="input-base text-xs mt-1"
+                />
+              </div>
+            </div>
+            <div className="pt-3 border-t border-gray-100 flex justify-end gap-2">
+              <button
+                onClick={() => {
+                  setShowRescheduleModal(false);
+                  setTargetInspectionId(null);
+                }}
+                className="btn-secondary text-xs py-1.5"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  if (rescheduleDate) {
+                    rescheduleInspectionMutation.mutate({
+                      inspId: targetInspectionId,
+                      scheduledDate: rescheduleDate,
+                      notes: rescheduleNotes.trim() || undefined,
+                    });
+                  }
+                }}
+                disabled={!rescheduleDate || rescheduleInspectionMutation.isPending}
+                className="btn-primary text-xs py-1.5 bg-amber-600 hover:bg-amber-700"
+              >
+                {rescheduleInspectionMutation.isPending ? 'Updating...' : 'Confirm Reschedule'}
               </button>
             </div>
           </div>

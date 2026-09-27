@@ -82,17 +82,18 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               </Link>
             );
           })}
-
-          <div className="pt-3 mt-3 border-t border-sidebar-border/30">
-            <button onClick={handleLogout} className="sidebar-link w-full text-left text-red-400 hover:text-red-300 hover:bg-red-900/20">
-              <LogOut className="w-4 h-4 flex-shrink-0" />
-              <span>Logout</span>
-            </button>
-          </div>
         </nav>
 
+        {/* Logout immediately above user profile */}
+        <div className="px-3 pt-3 border-t border-sidebar-border/30">
+          <button onClick={handleLogout} className="sidebar-link w-full text-left text-red-400 hover:text-red-300 hover:bg-red-900/20">
+            <LogOut className="w-4 h-4 flex-shrink-0" />
+            <span>Logout</span>
+          </button>
+        </div>
+
         {user && (
-          <div className="px-3 py-4 border-t border-sidebar-border/30">
+          <div className="px-3 py-3 border-t border-sidebar-border/30">
             <div className="flex items-center gap-3 px-2 py-2 rounded-lg">
               <div className="w-8 h-8 rounded-full bg-purple-700 flex items-center justify-center flex-shrink-0">
                 <span className="text-white text-xs font-semibold">{user.name.charAt(0)}</span>

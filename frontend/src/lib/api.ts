@@ -122,6 +122,7 @@ export const inspectionsApi = {
   listProject: (projectId: string) => api.get<unknown[]>(`/projects/${projectId}/inspections`),
   schedule: (data: object) => api.post('/inspections', data),
   update: (id: string, data: object) => api.patch(`/inspections/${id}`, data),
+  recordFinding: (inspectionId: string, data: object) => api.post(`/inspections/${inspectionId}/findings`, data),
   updateFinding: (findingId: string, data: object) => api.patch(`/inspections/findings/${findingId}`, data),
 };
 

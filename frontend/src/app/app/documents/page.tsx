@@ -112,8 +112,8 @@ export default function DocumentsPage() {
 
   return (
     <div className="p-6 space-y-5 animate-fade-in">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+      {/* Sticky Action Header */}
+      <div className="sticky top-0 z-20 bg-surface/95 backdrop-blur-sm pb-3 pt-1 border-b border-gray-100 flex items-center justify-between">
         <div>
           <h1 className="text-lg font-bold text-gray-900">Document Vault</h1>
           <p className="text-xs text-gray-500 mt-0.5">
@@ -133,7 +133,7 @@ export default function DocumentsPage() {
               setUploadDocType('');
               setShowUploadModal(true);
             }}
-            className="btn-primary text-xs py-1.5"
+            className="btn-primary text-xs py-1.5 shadow-sm"
           >
             <Upload className="w-3.5 h-3.5" /> Upload Document
           </button>

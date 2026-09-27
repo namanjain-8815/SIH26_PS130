@@ -257,7 +257,7 @@ export default function SLAMonitorPage() {
               <tr key={item.id} className={`hover:bg-gray-50/80 transition-colors ${item.breached ? 'bg-red-50/30' : item.sla_status === 'AT_RISK' ? 'bg-orange-50/30' : ''}`}>
                 <td className="px-4 py-3">
                   <Link
-                    href={`/app/applications/${item.application_id}`}
+                    href={`/government/work-queue?application_id=${encodeURIComponent(item.application_id)}`}
                     className="font-mono text-xs text-blue-600 hover:text-blue-800 font-semibold inline-flex items-center gap-1"
                   >
                     {item.application_number}
