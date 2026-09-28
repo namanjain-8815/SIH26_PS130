@@ -2,7 +2,7 @@ import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert';
 import { getTestBaseUrl, closeTestServer, loginAs } from './testHelper';
 
-describe('P0.3 — Parallel Application Orchestration Integration Tests', () => {
+describe('P0.7 — Parallel Application Orchestration Integration Tests', () => {
   let token: string;
   let baseUrl: string;
   const projectId = 'proj-abc-foods-001';

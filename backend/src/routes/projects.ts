@@ -40,6 +40,22 @@ router.get('/projects/:id', requireAuth, async (req, res, next) => {
   }
 });
 
+router.get('/projects/:id/profile', requireAuth, async (req, res, next) => {
+  try {
+    res.json(await projectService.getProjectProfile(req.params.id));
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.patch('/projects/:id/profile', requireAuth, async (req, res, next) => {
+  try {
+    res.json(await projectService.updateProjectProfile(req.params.id, req.body));
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.patch('/projects/:id', requireAuth, async (req, res, next) => {
   try {
     res.json(await projectService.updateProject(req.params.id, req.body));
@@ -105,6 +121,15 @@ router.get('/projects/:id/submission-centre', requireAuth, async (req, res, next
   }
 });
 
+router.get('/projects/:id/approval-tracker', requireAuth, async (req, res, next) => {
+  try {
+    const { getProjectApprovalTracker } = await import('../services/approvalTrackerService');
+    res.json(await getProjectApprovalTracker(req.params.id));
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.post('/projects/:id/submit-application/:applicationId', requireAuth, async (req, res, next) => {
   try {
     const { notes } = req.body || {};
@@ -116,6 +141,28 @@ router.post('/projects/:id/submit-application/:applicationId', requireAuth, asyn
         notes
       )
     );
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/projects/:id/document-consistency', requireAuth, async (req, res, next) => {
+  try {
+    const { checkProjectDocumentConsistency } = await import(
+      '../services/crossDocumentConsistencyService'
+    );
+    res.json(await checkProjectDocumentConsistency(req.params.id));
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/projects/:id/document-checklist', requireAuth, async (req, res, next) => {
+  try {
+    const { getProjectDocumentGuidance } = await import(
+      '../services/documentGuidanceService'
+    );
+    res.json(await getProjectDocumentGuidance(req.params.id));
   } catch (err) {
     next(err);
   }

@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
-import { usePathname, useRouter } from 'next/navigation';
+import { Suspense, useState, useEffect, useRef } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+import { useQuery } from '@tanstack/react-query';
 import {
   Sparkles,
   X,
@@ -17,96 +18,127 @@ import {
   Clock,
   ChevronRight,
   LifeBuoy,
+  Loader2,
+  AlertCircle,
+  CheckCircle2,
+  Lock,
+  Layers,
 } from 'lucide-react';
-import {
-  resolveGuidanceQuestion,
-  getSuggestedPromptsForContext,
-  type GuidanceContext,
-  type GuidanceResponse,
-  CURRENT_GUIDANCE_PROVIDER,
-} from '@/lib/guidanceEngine';
+import { guidanceApi } from '@/lib/api';
+import type { ContextualGuidancePayload, GuidanceQuestionAnswer } from '@/types/api';
 
 interface Message {
   id: string;
   sender: 'user' | 'assistant';
   text?: string;
-  response?: GuidanceResponse;
+  answer?: GuidanceQuestionAnswer;
   timestamp: string;
 }
 
-export function ApplicationGuidanceAssistant() {
+function ApplicationGuidanceAssistantContent() {
   const pathname = usePathname();
   const router = useRouter();
+  const searchParams = useSearchParams();
+
   const [isOpen, setIsOpen] = useState(false);
   const [inputQuery, setInputQuery] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Extract context from route
-  const isApplication = pathname.includes('/app/applications/');
-  const isApprovals = pathname.includes('/app/approvals');
-  const isDocuments = pathname.includes('/app/documents');
-  const isCompliance = pathname.includes('/app/compliance');
-  const isProjects = pathname.includes('/app/projects');
-  const isAssistance = pathname.includes('/app/assistance');
+  // Determine active route context
+  const appMatch = pathname.match(/\/app\/applications\/([a-zA-Z0-9_-]+)/);
+  const pathAppId = appMatch && appMatch[1] !== 'new' ? appMatch[1] : undefined;
+  const projMatch = pathname.match(/\/app\/projects\/([a-zA-Z0-9_-]+)/);
+  const pathProjId = projMatch ? projMatch[1] : undefined;
 
-  const contextLabel = isApplication
-    ? 'Application Workspace'
-    : isApprovals
-    ? 'Permissions & Approvals'
-    : isDocuments
-    ? 'Document Vault'
-    : isCompliance
-    ? 'Compliance & Renewals'
-    : isProjects
-    ? 'Investment Proposals'
-    : isAssistance
-    ? 'Investor Assistance'
-    : 'Applicant Dashboard';
+  const activeProjectId = searchParams.get('projectId') || pathProjId || undefined;
+  const activeApplicationId = searchParams.get('applicationId') || pathAppId || undefined;
 
-  const guidanceContext: GuidanceContext = {
-    pathname,
-    projectId: 'proj-abc-foods-001',
-    projectData: {
-      name: 'ABC Foods Dairy Processing Unit',
-      sector: 'Food Processing',
-      stage: 'Pre-Establishment',
-      district: 'Pune',
-    },
-    applicationData: {
-      application_number: isApplication ? 'APP-2026-0042' : undefined,
-      approval_name: isApplication ? 'Consent to Establish (CTE - Red)' : undefined,
-      authority: isApplication ? 'Maharashtra Pollution Control Board (MPCB)' : undefined,
-      status: 'IN_PREPARATION',
-      open_queries_count: 0,
-      sla_status: 'ON_TRACK',
-    },
-  };
+  let pageTag = 'dashboard';
+  let contextLabel = 'Applicant Dashboard';
+  if (pathname.includes('/app/applications')) {
+    pageTag = 'applications';
+    contextLabel = 'Application Workspace';
+  } else if (pathname.includes('/app/approvals') || pathname.includes('/app/approval-directory')) {
+    pageTag = 'approvals';
+    contextLabel = 'Permissions & Approvals';
+  } else if (pathname.includes('/app/documents')) {
+    pageTag = 'documents';
+    contextLabel = 'Document Vault';
+  } else if (pathname.includes('/app/compliance')) {
+    pageTag = 'compliance';
+    contextLabel = 'Compliance & Renewals';
+  } else if (pathname.includes('/app/inspections')) {
+    pageTag = 'inspections';
+    contextLabel = 'Site Inspections';
+  } else if (pathname.includes('/app/incentives')) {
+    pageTag = 'incentives';
+    contextLabel = 'Incentive Schemes';
+  } else if (pathname.includes('/app/assistance')) {
+    pageTag = 'assistance';
+    contextLabel = 'Investor Assistance';
+  } else if (pathname.includes('/app/projects')) {
+    pageTag = 'projects';
+    contextLabel = 'Investment Proposals';
+  }
 
-  const suggestedPrompts = getSuggestedPromptsForContext(guidanceContext);
+  // Fetch live contextual guidance from database
+  const { data: guidanceData, isLoading } = useQuery({
+    queryKey: ['contextual-guidance', { page: pageTag, project_id: activeProjectId, application_id: activeApplicationId }],
+    queryFn: () =>
+      guidanceApi.getContextual({
+        page: pageTag,
+        project_id: activeProjectId,
+        application_id: activeApplicationId,
+      }),
+    staleTime: 15_000,
+  });
 
-  // Initialize initial greeting when opened first time
+  // Suggested questions from server, or sensible statutory fallbacks
+  const suggestedQuestions = guidanceData?.suggested_questions || [
+    { id: 'why_required', question: 'Why is this permission required?', category: 'statutory' },
+    { id: 'documents_needed', question: 'What documents are needed?', category: 'readiness' },
+    { id: 'what_next', question: 'What should I do next?', category: 'process' },
+    { id: 'eligible_approvals', question: 'Which approvals can start now?', category: 'dependencies' },
+  ];
+
+  // Set greeting on first load or context reset
   useEffect(() => {
-    if (messages.length === 0) {
+    if (messages.length === 0 && guidanceData) {
+      const projName = guidanceData.context.project_name || 'Active Investment Proposal';
+      const appName = guidanceData.context.approval_name;
+      const appNumber = guidanceData.context.application_number;
+      const status = guidanceData.context.status;
+
+      let greetingText = `Hello! I am your Single Window **Contextual Guidance Assistant**.\n\nI provide 100% deterministic, live database-grounded answers for **${projName}**.`;
+      if (appName) {
+        greetingText += `\n\n📌 Currently reviewing: **${appName}** ${appNumber ? `(${appNumber})` : ''} · Status: \`${status || 'ACTIVE'}\`.`;
+      }
+      greetingText += `\n\nClick any suggested question below or type your statutory question to get instant guidance on approvals, missing documents, queries, and service timelines.`;
+
       setMessages([
         {
           id: 'msg-welcome',
           sender: 'assistant',
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          response: {
-            intentId: 'welcome',
-            title: 'Welcome to Application Guidance',
-            answer: `Hello! I am your Single Window **Contextual Guidance Assistant**.\n\nI provide deterministic answers regarding Maharashtra statutory approvals, missing documents, readiness checks, queries, and service timelines for your investment proposal.`,
+          answer: {
+            question_id: 'welcome',
+            question: 'Context Overview',
+            category: 'general',
+            title: 'Single Window Regulatory Advisor',
+            answer: greetingText,
             actions: [
-              { label: 'Check Missing Documents', href: '/app/documents' },
-              { label: 'Start Eligible Clearances', href: '/app/approvals' },
+              { label: 'Check Document Vault', href: '/app/documents' },
+              { label: 'View All Clearances', href: '/app/approvals' },
+              { label: 'Joint Inspection Planner', href: '/app/inspections' },
             ],
-            suggestedFollowUps: suggestedPrompts.slice(0, 3),
+            suggested_follow_ups: suggestedQuestions.slice(0, 3).map((q) => q.question),
           },
         },
       ]);
     }
-  }, [messages.length, suggestedPrompts]);
+  }, [messages.length, guidanceData, suggestedQuestions]);
 
   // Auto-scroll on new message
   useEffect(() => {
@@ -115,28 +147,86 @@ export function ApplicationGuidanceAssistant() {
     }
   }, [messages, isOpen]);
 
-  const handleSend = (textToSend?: string) => {
-    const query = textToSend || inputQuery;
-    if (!query.trim()) return;
+  // Handle question click or submission
+  const handleAsk = async (questionText: string, questionId?: string) => {
+    const qText = questionText.trim();
+    if (!qText) return;
 
     const userMsg: Message = {
       id: `usr-${Date.now()}`,
       sender: 'user',
-      text: query,
+      text: qText,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     };
 
-    const guidanceRes = resolveGuidanceQuestion(query, guidanceContext);
-
-    const assistantMsg: Message = {
-      id: `ast-${Date.now() + 1}`,
-      sender: 'assistant',
-      response: guidanceRes,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    };
-
-    setMessages((prev) => [...prev, userMsg, assistantMsg]);
+    setMessages((prev) => [...prev, userMsg]);
     setInputQuery('');
+
+    // Check if we have an exact cached answer in the active guidance payload
+    if (questionId && guidanceData?.answers[questionId]) {
+      const cached = guidanceData.answers[questionId];
+      const assistantMsg: Message = {
+        id: `ast-${Date.now() + 1}`,
+        sender: 'assistant',
+        answer: cached,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      };
+      setMessages((prev) => [...prev, assistantMsg]);
+      return;
+    }
+
+    // Otherwise, fetch live query response from the backend endpoint
+    setIsSearching(true);
+    try {
+      const response = await guidanceApi.getContextual({
+        page: pageTag,
+        project_id: activeProjectId,
+        application_id: activeApplicationId,
+        query_text: qText,
+      });
+
+      const matchedAnswer =
+        response.search_match ||
+        Object.values(response.answers)[0] || {
+          question_id: 'custom',
+          question: qText,
+          category: 'statutory',
+          title: 'Regulatory Guidance Result',
+          answer: `Here is the current regulatory information related to your request for ${
+            response.context.project_name || 'your project'
+          }.`,
+          actions: [{ label: 'View Permissions', href: '/app/approvals' }],
+          suggested_follow_ups: response.suggested_questions.slice(0, 2).map((sq) => sq.question),
+        };
+
+      const assistantMsg: Message = {
+        id: `ast-${Date.now() + 1}`,
+        sender: 'assistant',
+        answer: matchedAnswer,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      };
+      setMessages((prev) => [...prev, assistantMsg]);
+    } catch {
+      const fallbackMsg: Message = {
+        id: `ast-${Date.now() + 1}`,
+        sender: 'assistant',
+        answer: {
+          question_id: 'error_fallback',
+          question: qText,
+          category: 'statutory',
+          title: 'Statutory Resolution Guidance',
+          answer: `For formal statutory assistance regarding "${qText}", you can raise an expedited ticket with the Single Window Nodal Facilitation Officer or inspect your active applications.`,
+          actions: [
+            { label: 'Submit Facilitation Request', href: '/app/assistance' },
+            { label: 'Check Document Vault', href: '/app/documents' },
+          ],
+        },
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      };
+      setMessages((prev) => [...prev, fallbackMsg]);
+    } finally {
+      setIsSearching(false);
+    }
   };
 
   const handleReset = () => {
@@ -180,10 +270,10 @@ export function ApplicationGuidanceAssistant() {
                     <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
                       Guidance Assistant
                       <span className="text-[10px] font-semibold bg-emerald-950 text-emerald-300 px-1.5 py-0.2 rounded border border-emerald-700/50">
-                        Rule Engine
+                        Live Grounded
                       </span>
                     </h3>
-                    <p className="text-[11px] text-slate-400">Contextual Single Window Statutory Advisor</p>
+                    <p className="text-[11px] text-slate-400">Deterministic Single Window Statutory Advisor</p>
                   </div>
                 </div>
 
@@ -208,34 +298,59 @@ export function ApplicationGuidanceAssistant() {
               </div>
 
               {/* Active Context Banner */}
-              <div className="mt-3 px-3 py-1.5 bg-slate-800/80 rounded-lg flex items-center justify-between text-[11px]">
-                <span className="text-slate-400">Active Screen:</span>
-                <span className="font-semibold text-primary-200 flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-primary-400" />
-                  {contextLabel}
-                </span>
+              <div className="mt-3 px-3 py-2 bg-slate-800/90 rounded-lg space-y-1 text-[11px]">
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-400">Active Screen:</span>
+                  <span className="font-semibold text-primary-200 flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-primary-400" />
+                    {contextLabel}
+                  </span>
+                </div>
+                {guidanceData?.context?.project_name && (
+                  <div className="flex items-center justify-between border-t border-slate-700/50 pt-1 text-[10px]">
+                    <span className="text-slate-400">Proposal:</span>
+                    <span className="text-slate-200 truncate font-medium max-w-[200px]">
+                      {guidanceData.context.project_name}
+                    </span>
+                  </div>
+                )}
+                {guidanceData?.context?.approval_name && (
+                  <div className="flex items-center justify-between text-[10px]">
+                    <span className="text-slate-400">Clearance:</span>
+                    <span className="text-amber-300 truncate font-semibold max-w-[200px]">
+                      {guidanceData.context.approval_name}
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
 
-            {/* Quick Context Prompts Ribbon */}
+            {/* Suggested Question Chips Ribbon */}
             <div className="px-4 py-2.5 bg-slate-50 border-b border-gray-200 flex items-center gap-1.5 overflow-x-auto no-scrollbar flex-shrink-0">
               <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider flex-shrink-0">
                 Suggested:
               </span>
-              {suggestedPrompts.slice(0, 4).map((prompt, i) => (
+              {suggestedQuestions.map((sq) => (
                 <button
-                  key={i}
+                  key={sq.id}
                   type="button"
-                  onClick={() => handleSend(prompt)}
+                  onClick={() => handleAsk(sq.question, sq.id)}
                   className="px-2.5 py-1 text-[11px] font-medium bg-white hover:bg-primary-50 text-gray-700 hover:text-primary-800 border border-gray-200 rounded-full flex-shrink-0 transition-colors shadow-xs"
                 >
-                  {prompt}
+                  {sq.question}
                 </button>
               ))}
             </div>
 
             {/* Conversation Messages */}
             <div className="flex-1 overflow-y-auto p-4 space-y-4 text-xs">
+              {isLoading && messages.length === 0 && (
+                <div className="flex items-center justify-center p-8 text-gray-400">
+                  <Loader2 className="w-5 h-5 animate-spin mr-2" />
+                  <span>Loading regulatory context...</span>
+                </div>
+              )}
+
               {messages.map((msg) => (
                 <div key={msg.id} className="space-y-1">
                   {msg.sender === 'user' ? (
@@ -248,25 +363,25 @@ export function ApplicationGuidanceAssistant() {
                   ) : (
                     <div className="flex justify-start">
                       <div className="max-w-[95%] bg-gray-50 border border-gray-200/90 rounded-2xl rounded-tl-xs p-3.5 space-y-2.5 shadow-xs">
-                        {msg.response && (
+                        {msg.answer && (
                           <>
                             <div className="flex items-center justify-between border-b border-gray-200/60 pb-1.5">
                               <h4 className="font-bold text-gray-900 text-xs flex items-center gap-1.5">
                                 <ShieldCheck className="w-3.5 h-3.5 text-primary-600" />
-                                {msg.response.title}
+                                {msg.answer.title}
                               </h4>
                               <span className="text-[10px] text-gray-400">{msg.timestamp}</span>
                             </div>
 
-                            {/* Formatted response text */}
+                            {/* Formatted grounded text */}
                             <div className="text-gray-700 space-y-2 leading-relaxed whitespace-pre-line">
-                              {msg.response.answer}
+                              {msg.answer.answer}
                             </div>
 
                             {/* Direct Action Links */}
-                            {msg.response.actions && msg.response.actions.length > 0 && (
+                            {msg.answer.actions && msg.answer.actions.length > 0 && (
                               <div className="pt-2 border-t border-gray-200/60 flex flex-wrap gap-1.5">
-                                {msg.response.actions.map((act, idx) => (
+                                {msg.answer.actions.map((act, idx) => (
                                   <Link
                                     key={idx}
                                     href={act.href}
@@ -281,13 +396,13 @@ export function ApplicationGuidanceAssistant() {
                             )}
 
                             {/* Suggested follow-up chips */}
-                            {msg.response.suggestedFollowUps && msg.response.suggestedFollowUps.length > 0 && (
+                            {msg.answer.suggested_follow_ups && msg.answer.suggested_follow_ups.length > 0 && (
                               <div className="pt-2 border-t border-dashed border-gray-200 flex flex-wrap gap-1">
-                                {msg.response.suggestedFollowUps.map((fu, i) => (
+                                {msg.answer.suggested_follow_ups.map((fu, i) => (
                                   <button
                                     key={i}
                                     type="button"
-                                    onClick={() => handleSend(fu)}
+                                    onClick={() => handleAsk(fu)}
                                     className="text-[10px] font-medium text-gray-600 bg-white hover:bg-gray-100 border border-gray-200 px-2 py-0.5 rounded-md text-left transition-colors"
                                   >
                                     → {fu}
@@ -302,6 +417,14 @@ export function ApplicationGuidanceAssistant() {
                   )}
                 </div>
               ))}
+
+              {isSearching && (
+                <div className="flex items-center gap-2 text-xs text-gray-500 italic p-2 bg-gray-50 rounded-lg">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-primary-600" />
+                  <span>Evaluating statutory rules against active database state...</span>
+                </div>
+              )}
+
               <div ref={messagesEndRef} />
             </div>
 
@@ -310,7 +433,7 @@ export function ApplicationGuidanceAssistant() {
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
-                  handleSend();
+                  handleAsk(inputQuery);
                 }}
                 className="flex items-center gap-2"
               >
@@ -318,12 +441,12 @@ export function ApplicationGuidanceAssistant() {
                   type="text"
                   value={inputQuery}
                   onChange={(e) => setInputQuery(e.target.value)}
-                  placeholder="Ask about required documents, readiness, or SLA..."
+                  placeholder="Ask about required documents, blockers, or SLA..."
                   className="input-base text-xs py-2 flex-1"
                 />
                 <button
                   type="submit"
-                  disabled={!inputQuery.trim()}
+                  disabled={!inputQuery.trim() || isSearching}
                   className="p-2 bg-primary-700 hover:bg-primary-800 disabled:opacity-40 text-white rounded-lg transition-colors flex-shrink-0"
                   title="Send Question"
                 >
@@ -333,11 +456,11 @@ export function ApplicationGuidanceAssistant() {
 
               {/* Statutory Disclaimer & Facilitation Bridge */}
               <div className="flex items-center justify-between text-[10px] text-gray-400 px-1 pt-1">
-                <span>Deterministic rules · No external LLM</span>
+                <span>Deterministic statutory rules · No external LLM</span>
                 <Link
                   href="/app/assistance"
                   onClick={() => setIsOpen(false)}
-                  className="text-primary-600 hover:underline flex items-center gap-0.5"
+                  className="text-primary-600 hover:underline flex items-center gap-0.5 font-medium"
                 >
                   <LifeBuoy className="w-3 h-3" />
                   Nodal Assistance
@@ -348,5 +471,13 @@ export function ApplicationGuidanceAssistant() {
         </div>
       )}
     </>
+  );
+}
+
+export function ApplicationGuidanceAssistant() {
+  return (
+    <Suspense fallback={null}>
+      <ApplicationGuidanceAssistantContent />
+    </Suspense>
   );
 }

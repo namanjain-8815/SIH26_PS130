@@ -21,6 +21,7 @@ import {
   LogOut,
   Building2,
   ChevronRight,
+  Compass,
 } from 'lucide-react';
 
 import { AuthLoadingState, PermissionDeniedState } from '@/components/ui/States';
@@ -28,15 +29,16 @@ import { BhashiniSeamButton } from '@/components/ui/BhashiniSeam';
 import { ApplicationGuidanceAssistant } from '@/components/guidance/ApplicationGuidanceAssistant';
 
 const NAV = [
-  { href: '/app/dashboard',   label: 'Dashboard',                 icon: LayoutDashboard },
-  { href: '/app/projects',    label: 'Investment Proposals',      icon: FolderKanban },
-  { href: '/app/approvals',   label: 'Permissions & Approvals',   icon: FileText },
-  { href: '/app/documents',   label: 'Document Vault',            icon: Files },
-  { href: '/app/inspections', label: 'Site Inspections',          icon: ClipboardCheck },
-  { href: '/app/compliance',  label: 'Compliance & Renewals',     icon: Calendar },
-  { href: '/app/incentives',  label: 'Incentives & Schemes',      icon: Gift },
-  { href: '/app/assistance',  label: 'Investor Assistance',       icon: LifeBuoy },
-  { href: '/app/notifications',label: 'Notifications',            icon: Bell, badge: true },
+  { href: '/app/dashboard',          label: 'Dashboard',                 icon: LayoutDashboard },
+  { href: '/app/projects',           label: 'Investment Proposals',      icon: FolderKanban },
+  { href: '/app/approvals',          label: 'Permissions & Approvals',   icon: FileText },
+  { href: '/app/approval-directory', label: 'Approval Directory',        icon: Compass },
+  { href: '/app/documents',          label: 'Document Vault',            icon: Files },
+  { href: '/app/inspections',        label: 'Site Inspections',          icon: ClipboardCheck },
+  { href: '/app/compliance',         label: 'Compliance & Renewals',     icon: Calendar },
+  { href: '/app/incentives',         label: 'Incentives & Schemes',      icon: Gift },
+  { href: '/app/assistance',         label: 'Investor Assistance',       icon: LifeBuoy },
+  { href: '/app/notifications',      label: 'Notifications',            icon: Bell, badge: true },
 ];
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {

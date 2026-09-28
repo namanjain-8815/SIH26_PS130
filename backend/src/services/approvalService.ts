@@ -1,9 +1,24 @@
 import { prisma } from '../lib/prisma';
 import { NotFoundError } from '../lib/errors';
 import { getPrescribedFormForApproval } from './prescribedFormService';
+import { evaluateProjectAgainstRules } from '../rule-engine/evaluate';
+import { EvaluableRule, ProjectProfile } from '../rule-engine/types';
 
 export async function listApprovalTypes() {
-  const types = await prisma.approvalType.findMany({ where: { active: true }, orderBy: { name: 'asc' } });
+  const types = await prisma.approvalType.findMany({
+    where: { active: true },
+    include: {
+      document_requirements: true,
+      applicability_rules: true,
+      dependent_on: {
+        include: { prerequisite_approval: true },
+      },
+      prerequisite_for: {
+        include: { dependent_approval: true },
+      },
+    },
+    orderBy: { name: 'asc' },
+  });
   return types.map((t) => ({
     ...t,
     prescribed_form: getPrescribedFormForApproval(t.name),
@@ -13,12 +28,97 @@ export async function listApprovalTypes() {
 export async function getApprovalType(id: string) {
   const approvalType = await prisma.approvalType.findUnique({
     where: { id },
-    include: { document_requirements: true, applicability_rules: true },
+    include: {
+      document_requirements: true,
+      applicability_rules: true,
+      dependent_on: {
+        include: { prerequisite_approval: true },
+      },
+      prerequisite_for: {
+        include: { dependent_approval: true },
+      },
+    },
   });
   if (!approvalType) throw new NotFoundError('Approval type not found');
   return {
     ...approvalType,
     prescribed_form: getPrescribedFormForApproval(approvalType.name),
+  };
+}
+
+export async function checkApprovalApplicability(approvalTypeId: string, projectId: string) {
+  const project = await prisma.project.findUnique({
+    where: { id: projectId },
+    include: { attributes: true },
+  });
+  if (!project) throw new NotFoundError('Project not found');
+
+  const approvalType = await prisma.approvalType.findUnique({
+    where: { id: approvalTypeId },
+    include: {
+      document_requirements: true,
+      applicability_rules: true,
+      dependent_on: {
+        include: { prerequisite_approval: true },
+      },
+      prerequisite_for: {
+        include: { dependent_approval: true },
+      },
+    },
+  });
+  if (!approvalType) throw new NotFoundError('Approval type not found');
+
+  const profile: ProjectProfile = {
+    sector: project.sector,
+    district: project.district,
+    industrial_area: project.industrial_area,
+    investment_amount: Number(project.investment_amount),
+    employee_count: project.employee_count,
+    stage: project.stage,
+    ...Object.fromEntries(project.attributes.map((a) => [a.key, a.value])),
+  };
+
+  const evaluableRules: EvaluableRule[] = (approvalType.applicability_rules || []).map((r) => ({
+    id: r.id,
+    approval_type_id: r.approval_type_id,
+    rule_name: r.rule_name,
+    conditions: r.conditions as unknown as EvaluableRule['conditions'],
+    jurisdiction: r.jurisdiction,
+    sector: r.sector,
+  }));
+
+  const result = evaluateProjectAgainstRules(profile, evaluableRules);
+  const isApplicable = result.applicableApprovals.includes(approvalTypeId);
+
+  const existingProjectApproval = await prisma.projectApproval.findUnique({
+    where: {
+      project_id_approval_type_id: {
+        project_id: projectId,
+        approval_type_id: approvalTypeId,
+      },
+    },
+    include: { application: true },
+  });
+
+  return {
+    approval_type_id: approvalTypeId,
+    approval_name: approvalType.name,
+    authority: approvalType.authority,
+    project_id: projectId,
+    project_name: project.name,
+    applicable: isApplicable || !!existingProjectApproval,
+    reason: isApplicable
+      ? result.reasons[approvalTypeId]
+      : existingProjectApproval?.applicability_reason || 'Criteria not met for current project attributes.',
+    matched_rules: result.matches.map((m) => m.reason),
+    status_in_project: existingProjectApproval?.status || (isApplicable ? 'NOT_STARTED' : null),
+    application_id: existingProjectApproval?.application?.id || null,
+    application_status: existingProjectApproval?.application?.status || null,
+    requires_inspection: approvalType.requires_inspection,
+    default_sla_days: approvalType.default_sla_days,
+    renewal_period_days: approvalType.renewal_period_days,
+    document_requirements: approvalType.document_requirements || [],
+    prerequisites: (approvalType.dependent_on || []).map((d: any) => d.prerequisite_approval).filter(Boolean),
   };
 }
 

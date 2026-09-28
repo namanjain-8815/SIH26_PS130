@@ -30,6 +30,7 @@ export interface Project {
   stage: string;
   district: string;
   industrial_area: string | null;
+  organization?: { id: string; legal_name: string; entity_type?: string } | null;
 }
 
 export interface ApprovalType {
@@ -41,6 +42,39 @@ export interface ApprovalType {
   purpose: string;
   default_sla_days: number;
   requires_inspection: boolean;
+  renewal_period_days?: number | null;
+  document_requirements?: Array<{
+    id: string;
+    document_type: string;
+    mandatory: boolean;
+    condition?: string | null;
+  }>;
+  applicability_rules?: Array<{
+    id: string;
+    rule_name: string;
+    jurisdiction: string;
+    sector?: string | null;
+    conditions: any;
+  }>;
+  dependent_on?: Array<{
+    id: string;
+    prerequisite_approval_type_id: string;
+    prerequisite_approval?: {
+      id: string;
+      name: string;
+      authority: string;
+    };
+  }>;
+  prerequisite_for?: Array<{
+    id: string;
+    dependent_approval_type_id: string;
+    dependent_approval?: {
+      id: string;
+      name: string;
+      authority: string;
+    };
+  }>;
+  prescribed_form?: any;
 }
 
 export interface ProjectApproval {

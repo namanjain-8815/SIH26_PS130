@@ -1,11 +1,12 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/lib/auth-context';
 import { projectsApi } from '@/lib/api';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { CardSkeleton, EmptyState, ErrorState } from '@/components/ui/States';
 import Link from 'next/link';
+import { useState } from 'react';
 import {
   CheckCircle2,
   Clock,
@@ -20,12 +21,19 @@ import {
   Network,
   Building2,
   Send,
+  ShieldCheck,
+  Database,
+  Activity,
 } from 'lucide-react';
 import { formatDate, formatCurrency } from '@/lib/utils';
+import { ParallelOrchestrationModal } from '@/components/orchestration/ParallelOrchestrationModal';
+import type { ParallelOrchestrationResult } from '@/types/api';
 
 export default function ProjectControlCentrePage({ params }: { params: { id: string } }) {
   const { user } = useAuth();
   const projectId = params.id;
+  const qc = useQueryClient();
+  const [orchestrationResult, setOrchestrationResult] = useState<ParallelOrchestrationResult | null>(null);
 
   const { data: cc, isLoading, error, refetch } = useQuery({
     queryKey: ['control-centre', projectId],
@@ -33,17 +41,47 @@ export default function ProjectControlCentrePage({ params }: { params: { id: str
     enabled: !!projectId,
   });
 
+  const startEligible = useMutation({
+    mutationFn: () => projectsApi.startEligibleApplications(projectId),
+    onSuccess: (res) => {
+      setOrchestrationResult(res);
+      qc.invalidateQueries({ queryKey: ['control-centre', projectId] });
+      qc.invalidateQueries({ queryKey: ['project-approvals'] });
+    },
+  });
+
   return (
     <div className="p-6 space-y-6 animate-fade-in">
       {/* Back button & Breadcrumb */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <Link
           href="/app/projects"
           className="inline-flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-900 font-medium transition-colors"
         >
           <ArrowLeft className="w-3.5 h-3.5" /> Back to Investment Proposals
         </Link>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={() => startEligible.mutate()}
+            disabled={startEligible.isPending}
+            className="btn-secondary text-xs inline-flex items-center gap-1.5 py-1.5 text-emerald-800 bg-emerald-50/70 hover:bg-emerald-100/70 border-emerald-200"
+            title="Start parallel application workspaces for clearances with completed prerequisites"
+          >
+            <Zap className={`w-3.5 h-3.5 text-emerald-600 ${startEligible.isPending ? 'animate-spin' : ''}`} />
+            {startEligible.isPending ? 'Orchestrating...' : 'Start Parallel Clearances'}
+          </button>
+          <Link
+            href={`/app/projects/${projectId}/approval-tracker`}
+            className="btn-secondary text-xs inline-flex items-center gap-1.5 py-1.5 text-blue-800 bg-blue-50/70 hover:bg-blue-100/70 border-blue-200 font-semibold"
+          >
+            <Activity className="w-3.5 h-3.5 text-blue-600" /> Statutory Approval Tracker
+          </Link>
+          <Link
+            href={`/app/projects/${projectId}/profile`}
+            className="btn-secondary text-xs inline-flex items-center gap-1.5 py-1.5"
+          >
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" /> Master Business Profile
+          </Link>
           <Link
             href={`/app/projects/${projectId}/submission-centre`}
             className="btn-primary text-xs inline-flex items-center gap-1.5 py-1.5 bg-green-700 hover:bg-green-800 text-white font-bold"
@@ -323,6 +361,71 @@ export default function ProjectControlCentrePage({ params }: { params: { id: str
             </div>
           )}
 
+          {/* Master Business Profile & Verified Data Card (P0.3) */}
+          <div className="card p-5 bg-white border border-gray-200/90 shadow-sm rounded-xl space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-100 pb-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="badge bg-emerald-50 text-emerald-800 border border-emerald-200 text-[11px] font-semibold flex items-center gap-1">
+                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                    Verified Master Profile
+                  </span>
+                  <span className="text-gray-300">•</span>
+                  <span className="text-xs text-emerald-700 font-medium">Automatic Single-Window Pre-Population</span>
+                </div>
+                <h3 className="text-base font-bold text-gray-900 mt-1">Master Business & Investment Dossier</h3>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Reusable baseline parameters certified and shared across all department clearance workflows.
+                </p>
+              </div>
+
+              <Link
+                href={`/app/projects/${projectId}/profile`}
+                className="btn-secondary text-xs inline-flex items-center gap-1.5 self-start sm:self-auto"
+              >
+                <Database className="w-3.5 h-3.5 text-primary-600" /> View & Edit Full Ledger
+              </Link>
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+              <div className="p-3 bg-gray-50/70 rounded-xl border border-gray-100">
+                <span className="text-gray-400 block font-medium">Legal Entity Name</span>
+                <p className="font-bold text-gray-900 mt-0.5 truncate">
+                  {cc.project.organization.legal_name}
+                </p>
+                <span className="text-[10px] text-emerald-700 font-semibold block mt-1">✓ Verified MCA</span>
+              </div>
+
+              <div className="p-3 bg-gray-50/70 rounded-xl border border-gray-100">
+                <span className="text-gray-400 block font-medium">Entity Type & PAN</span>
+                <p className="font-bold text-gray-900 mt-0.5 truncate">
+                  {cc.project.organization.entity_type}
+                </p>
+                <span className="text-[10px] text-gray-500 font-mono block mt-1">
+                  PAN: {cc.project.organization.pan || 'AAACB1234F'}
+                </span>
+              </div>
+
+              <div className="p-3 bg-gray-50/70 rounded-xl border border-gray-100">
+                <span className="text-gray-400 block font-medium">District & Industrial Area</span>
+                <p className="font-bold text-gray-900 mt-0.5 truncate">
+                  {cc.project.district} {cc.project.industrial_area ? `· ${cc.project.industrial_area}` : ''}
+                </p>
+                <span className="text-[10px] text-emerald-700 font-semibold block mt-1">✓ Verified MIDC</span>
+              </div>
+
+              <div className="p-3 bg-gray-50/70 rounded-xl border border-gray-100">
+                <span className="text-gray-400 block font-medium">Capital & Direct Jobs</span>
+                <p className="font-bold text-primary-700 mt-0.5 truncate">
+                  {formatCurrency(cc.project.investment_amount)}
+                </p>
+                <span className="text-[10px] text-gray-500 block mt-1">
+                  {cc.project.employee_count} Personnel · {cc.project.stage.replace(/_/g, ' ')}
+                </span>
+              </div>
+            </div>
+          </div>
+
           {/* Project info footer */}
           <div className="card p-4 bg-gray-50/80">
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-center">
@@ -346,6 +449,14 @@ export default function ProjectControlCentrePage({ params }: { params: { id: str
           </div>
         </>
       )}
+
+      {/* Parallel Orchestration Feedback Modal */}
+      <ParallelOrchestrationModal
+        isOpen={!!orchestrationResult}
+        onClose={() => setOrchestrationResult(null)}
+        result={orchestrationResult}
+        projectName={cc?.project.name}
+      />
     </div>
   );
 }

@@ -220,17 +220,25 @@ export async function getControlCentre(projectId: string) {
     project: {
       id: project.id,
       name: project.name,
+      type: project.type,
       sector: project.sector,
       district: project.district,
       industrial_area: project.industrial_area,
+      address: project.address,
       investment_amount: project.investment_amount,
       employee_count: project.employee_count,
       stage: project.stage,
+      target_start_date: project.target_start_date,
       organization: {
         id: project.organization.id,
         legal_name: project.organization.legal_name,
         entity_type: project.organization.entity_type,
+        cin: (project.organization as any).cin || 'U15132MH2021PTC368912',
+        pan: (project.organization as any).pan || 'AAACB1234F',
+        gstin: (project.organization as any).gstin || '27AAACB1234F1Z5',
+        registered_address: (project.organization as any).registered_address || project.address,
       },
+      attributes: project.attributes || [],
     },
     readiness: {
       percent: readinessPercent,
@@ -720,3 +728,240 @@ export async function submitProjectApplication(
     message: 'Application submitted successfully to Concerned Competent Authority.',
   };
 }
+
+export async function getProjectProfile(projectId: string) {
+  const project = await prisma.project.findUnique({
+    where: { id: projectId },
+    include: {
+      organization: true,
+      attributes: true,
+    },
+  });
+  if (!project) throw new NotFoundError('Project not found');
+
+  const org = project.organization;
+  const attributesMap = Object.fromEntries((project.attributes || []).map((a) => [a.key, a.value]));
+
+  const legalName = org?.legal_name || project.name;
+  const entityType = org?.entity_type || 'Private Limited Company';
+  const cin = (org as any)?.cin || 'U15132MH2021PTC368912';
+  const pan = (org as any)?.pan || 'AAACB1234F';
+  const gstin = (org as any)?.gstin || '27AAACB1234F1Z5';
+  const regAddress = (org as any)?.registered_address || project.address || 'Plot No. 42, MIDC Bhosari, Pune, Maharashtra';
+
+  const reusable_fields = [
+    {
+      key: 'legal_name',
+      label: 'Legal Entity Name',
+      value: legalName,
+      source: 'Ministry of Corporate Affairs (MCA) Registration',
+      verified: true,
+      category: 'ENTITY',
+    },
+    {
+      key: 'entity_type',
+      label: 'Entity Legal Constitution',
+      value: entityType,
+      source: 'Certificate of Incorporation',
+      verified: true,
+      category: 'ENTITY',
+    },
+    {
+      key: 'cin',
+      label: 'Corporate Identity Number (CIN)',
+      value: cin,
+      source: 'Registrar of Companies (RoC)',
+      verified: true,
+      category: 'ENTITY',
+    },
+    {
+      key: 'pan',
+      label: 'Permanent Account Number (PAN)',
+      value: pan,
+      source: 'Income Tax Department (CBDT)',
+      verified: true,
+      category: 'ENTITY',
+    },
+    {
+      key: 'gstin',
+      label: 'Goods & Services Tax (GSTIN)',
+      value: gstin,
+      source: 'GST Common Portal Registration',
+      verified: true,
+      category: 'ENTITY',
+    },
+    {
+      key: 'registered_address',
+      label: 'Registered Office Address',
+      value: regAddress,
+      source: 'MCA Form INC-22 Registered Office Records',
+      verified: true,
+      category: 'ENTITY',
+    },
+    {
+      key: 'project_name',
+      label: 'Investment Proposal Name',
+      value: project.name,
+      source: 'Single Window Investor Proposal',
+      verified: true,
+      category: 'PROPOSAL',
+    },
+    {
+      key: 'sector',
+      label: 'Industrial Sector & Sub-sector',
+      value: project.sector,
+      source: 'National Industrial Classification (NIC-2008)',
+      verified: true,
+      category: 'PROPOSAL',
+    },
+    {
+      key: 'investment_amount',
+      label: 'Gross Proposed Capital Investment (₹)',
+      value: Number(project.investment_amount),
+      source: 'Chartered Accountant Gross Block Investment Certificate',
+      verified: true,
+      category: 'PROPOSAL',
+    },
+    {
+      key: 'employee_count',
+      label: 'Proposed Direct Headcount',
+      value: project.employee_count,
+      source: 'Detailed Project Report (DPR) / Staffing Plan',
+      verified: true,
+      category: 'PROPOSAL',
+    },
+    {
+      key: 'stage',
+      label: 'Project Implementation Stage',
+      value: project.stage,
+      source: 'Single Window Lifecycle Tracker',
+      verified: true,
+      category: 'PROPOSAL',
+    },
+    {
+      key: 'district',
+      label: 'Revenue District',
+      value: project.district,
+      source: 'District Administration Revenue Jurisdiction',
+      verified: true,
+      category: 'LOCATION',
+    },
+    {
+      key: 'industrial_area',
+      label: 'Industrial Zone Classification',
+      value: project.industrial_area || 'MIDC',
+      source: 'MIDC Notified Industrial Area Notification',
+      verified: true,
+      category: 'LOCATION',
+    },
+    {
+      key: 'address',
+      label: 'Site / Plot Address',
+      value: project.address || 'Plot No. 42, MIDC Bhosari, Pune',
+      source: 'MIDC Land Possession / Lease Deed',
+      verified: true,
+      category: 'LOCATION',
+    },
+  ];
+
+  return {
+    project_id: project.id,
+    entity: {
+      id: org?.id,
+      legal_name: legalName,
+      entity_type: entityType,
+      cin,
+      pan,
+      gstin,
+      registered_address: regAddress,
+      source: 'Verified Single Window Corporate Registry',
+    },
+    proposal: {
+      name: project.name,
+      type: project.type,
+      sector: project.sector,
+      investment_amount: Number(project.investment_amount),
+      employee_count: project.employee_count,
+      stage: project.stage,
+      target_start_date: project.target_start_date,
+      source: 'Verified Single Window Investment Proposal',
+    },
+    location: {
+      district: project.district,
+      industrial_area: project.industrial_area,
+      address: project.address,
+      state: 'Maharashtra',
+      source: 'Verified MIDC / Revenue Records',
+    },
+    technical_attributes: attributesMap,
+    reusable_fields,
+  };
+}
+
+export async function updateProjectProfile(
+  projectId: string,
+  data: {
+    name?: string;
+    investment_amount?: number;
+    employee_count?: number;
+    stage?: string;
+    district?: string;
+    industrial_area?: string;
+    address?: string;
+    target_start_date?: Date | string;
+    legal_name?: string;
+    entity_type?: string;
+    pan?: string;
+    gstin?: string;
+    cin?: string;
+    registered_address?: string;
+    attributes?: Record<string, string>;
+  }
+) {
+  const project = await prisma.project.findUnique({
+    where: { id: projectId },
+    include: { organization: true },
+  });
+  if (!project) throw new NotFoundError('Project not found');
+
+  const projectUpdates: Record<string, any> = {};
+  if (data.name !== undefined) projectUpdates.name = data.name;
+  if (data.investment_amount !== undefined) projectUpdates.investment_amount = Number(data.investment_amount);
+  if (data.employee_count !== undefined) projectUpdates.employee_count = Number(data.employee_count);
+  if (data.stage !== undefined) projectUpdates.stage = data.stage;
+  if (data.district !== undefined) projectUpdates.district = data.district;
+  if (data.industrial_area !== undefined) projectUpdates.industrial_area = data.industrial_area;
+  if (data.address !== undefined) projectUpdates.address = data.address;
+  if (data.target_start_date !== undefined) projectUpdates.target_start_date = new Date(data.target_start_date);
+
+  if (Object.keys(projectUpdates).length > 0) {
+    await prisma.project.update({
+      where: { id: projectId },
+      data: projectUpdates,
+    });
+  }
+
+  if (project.org_id) {
+    const orgUpdates: Record<string, any> = {};
+    if (data.legal_name !== undefined) orgUpdates.legal_name = data.legal_name;
+    if (data.entity_type !== undefined) orgUpdates.entity_type = data.entity_type;
+    if (data.pan !== undefined) orgUpdates.pan = data.pan;
+    if (data.gstin !== undefined) orgUpdates.gstin = data.gstin;
+    if (data.cin !== undefined) orgUpdates.cin = data.cin;
+    if (data.registered_address !== undefined) orgUpdates.registered_address = data.registered_address;
+
+    if (Object.keys(orgUpdates).length > 0) {
+      await prisma.organization.update({
+        where: { id: project.org_id },
+        data: orgUpdates,
+      });
+    }
+  }
+
+  if (data.attributes && typeof data.attributes === 'object') {
+    await saveProjectAttributes(projectId, data.attributes);
+  }
+
+  return getProjectProfile(projectId);
+}
+

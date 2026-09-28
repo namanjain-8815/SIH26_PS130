@@ -13,6 +13,56 @@ router.get('/projects/:id/inspections', requireAuth, async (req, res, next) => {
   }
 });
 
+router.get('/projects/:id/joint-inspections', requireAuth, async (req, res, next) => {
+  try {
+    res.json(await inspectionService.getProjectJointInspections(req.params.id));
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/inspections/joint-plans', requireAuth, async (req, res, next) => {
+  try {
+    const plans = await inspectionService.listJointInspectionPlans({
+      project_id: req.query.project_id as string | undefined,
+      district: req.query.district as string | undefined,
+      status: req.query.status as string | undefined,
+      date_from: req.query.date_from as string | undefined,
+      date_to: req.query.date_to as string | undefined,
+    });
+    res.json(plans);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/inspections/joint-schedule', requireAuth, requireRole('OFFICER', 'INSPECTOR', 'ADMIN', 'NODAL'), async (req, res, next) => {
+  try {
+    const result = await inspectionService.scheduleJointInspection(req.body);
+    res.status(201).json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/inspections/joint-reschedule', requireAuth, requireRole('OFFICER', 'INSPECTOR', 'ADMIN', 'NODAL'), async (req, res, next) => {
+  try {
+    const result = await inspectionService.rescheduleJointInspection(req.body, req.user!.id);
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/inspections/joint-readiness', requireAuth, async (req, res, next) => {
+  try {
+    const result = await inspectionService.confirmJointReadiness(req.body, req.user!.id);
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.post('/projects/:id/inspections', requireAuth, requireRole('OFFICER', 'INSPECTOR', 'ADMIN', 'NODAL'), async (req, res, next) => {
   try {
     res.status(201).json(await inspectionService.scheduleInspection(req.body));

@@ -33,6 +33,52 @@ router.get('/applications/:id', requireAuth, async (req, res, next) => {
   }
 });
 
+router.get('/applications/:id/form', requireAuth, async (req, res, next) => {
+  try {
+    res.json(await applicationService.getApplicationForm(req.params.id));
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.patch('/applications/:id/form', requireAuth, async (req, res, next) => {
+  try {
+    const { department_values, notes } = req.body as {
+      department_values?: Record<string, any>;
+      notes?: string;
+    };
+    res.json(
+      await applicationService.saveApplicationForm(
+        req.params.id,
+        department_values || {},
+        req.user?.id,
+        notes
+      )
+    );
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/applications/:id/form/submit', requireAuth, async (req, res, next) => {
+  try {
+    const { department_values, notes } = req.body as {
+      department_values?: Record<string, any>;
+      notes?: string;
+    };
+    res.json(
+      await applicationService.submitApplicationFromForm(
+        req.params.id,
+        department_values,
+        req.user?.id,
+        notes
+      )
+    );
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.get('/applications/:id/scrutiny-priority', requireAuth, async (req, res, next) => {
   try {
     const { getApplicationScrutinyPriority } = await import('../services/scrutinyPriorityService');
@@ -98,6 +144,28 @@ router.post('/applications/:id/escalate', requireAuth, requireRole('OFFICER', 'N
 router.post('/applications/:id/readiness-check', requireAuth, async (req, res, next) => {
   try {
     res.json(await applicationService.runReadinessCheck(req.params.id));
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/applications/:id/document-consistency', requireAuth, async (req, res, next) => {
+  try {
+    const { checkApplicationDocumentConsistency } = await import(
+      '../services/crossDocumentConsistencyService'
+    );
+    res.json(await checkApplicationDocumentConsistency(req.params.id));
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/applications/:id/document-checklist', requireAuth, async (req, res, next) => {
+  try {
+    const { getApplicationDocumentGuidance } = await import(
+      '../services/documentGuidanceService'
+    );
+    res.json(await getApplicationDocumentGuidance(req.params.id));
   } catch (err) {
     next(err);
   }

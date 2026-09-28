@@ -1,22 +1,46 @@
 /**
- * Prescribed Application Form & Template Service (P1.8)
+ * Prescribed Application Form & Template Service (P0.8)
  * 
- * Provides approval-specific statutory forms and demonstration templates.
- * Supports download of prescribed format and guided re-upload via Document Pre-Validation.
+ * Provides approval-specific statutory forms, verified official files, and configurable templates.
+ * Enforces grounding in official government sources and prohibits fabricated government forms.
+ * Supports:
+ * - Direct download of verified official PDFs bundled in the repository
+ * - Authoritative official online portal links (e.g. FoSCoS, MIDC Single Window Services)
+ * - Clear distinction between "Statutory Prescribed Format" and "Demonstration / Configurable Form"
+ * - Guided re-upload via Document Pre-Validation
  */
+
+import path from 'path';
+import fs from 'fs';
+
+function getAssetPath(filename: string): string {
+  const candidate1 = path.resolve(__dirname, '../assets/prescribed-forms', filename);
+  if (fs.existsSync(candidate1)) return candidate1;
+  const candidate2 = path.resolve(process.cwd(), 'src/assets/prescribed-forms', filename);
+  if (fs.existsSync(candidate2)) return candidate2;
+  const candidate3 = path.resolve(process.cwd(), 'dist/assets/prescribed-forms', filename);
+  if (fs.existsSync(candidate3)) return candidate3;
+  return candidate1;
+}
 
 export interface PrescribedForm {
   id: string;
   form_name: string;
   document_type: string;
   approval_patterns: string[];
+  authority: string;
   source_label: string;
   source_url?: string;
+  is_online_application?: boolean;
+  official_online_url?: string;
+  online_portal_name?: string;
+  provenance_status: 'VERIFIED_OFFICIAL_DOCUMENT' | 'OFFICIAL_ONLINE_PORTAL' | 'CONFIGURABLE_DEMONSTRATION';
   category: 'Statutory Prescribed Format' | 'Demonstration / Configurable Form';
   version: string;
   effective_date: string;
   description: string;
   file_name: string;
+  file_path?: string;
   mime_type: string;
   template_content: string;
 }
@@ -24,22 +48,26 @@ export interface PrescribedForm {
 export const PRESCRIBED_FORMS: PrescribedForm[] = [
   {
     id: 'form-mpcb-cte-red',
-    form_name: 'Form-I: Application for Consent to Establish under Water & Air Acts',
+    form_name: 'Combined Consent Application Form: Water Act, Air Act & Hazardous Wastes Rules',
     document_type: 'Environmental Impact Assessment (EIA)',
-    approval_patterns: ['Consent to Establish', 'CTE', 'MPCB', 'Pollution'],
-    source_label: 'Maharashtra Pollution Control Board (MPCB) · Schedule-I Regulations',
-    source_url: 'https://mpcb.gov.in',
+    approval_patterns: ['Consent to Establish', 'CTE', 'MPCB', 'Pollution', 'Consent to Operate', 'CTO'],
+    authority: 'Maharashtra Pollution Control Board (MPCB)',
+    source_label: 'Official MPCB Downloadable Statutory Format (MPCB Portal)',
+    source_url: 'https://www.mpcb.gov.in/sites/default/files/consent-management/consent-water-air-act/Combied-consentformNew_31012012.pdf',
     category: 'Statutory Prescribed Format',
-    version: 'Rev 2024.1',
-    effective_date: '2024-01-01',
+    provenance_status: 'VERIFIED_OFFICIAL_DOCUMENT',
+    version: 'Combined Form 31/01/2012',
+    effective_date: '2012-01-31 (Fee Schedule per GR dt. 25/08/2011)',
     description:
-      'Statutory Form-I declaration covering proposed manufacturing process, daily water consumption balance, effluent treatment plant (ETP) capacity, and stack emissions.',
-    file_name: 'MPCB_Form_I_Consent_to_Establish_Template.pdf',
+      'Official statutory combined application form in triplicate to be submitted to Sub-Regional Officer under Section 25 of Water Act 1974, Section 21 of Air Act 1981, and Hazardous Wastes Rules.',
+    file_name: 'MPCB_Combined_Consent_Application_Form.pdf',
+    file_path: getAssetPath('MPCB_Combined_Consent_Application_Form.pdf'),
     mime_type: 'application/pdf',
+    is_online_application: false,
     template_content: `%PDF-1.4
 % Statutory Form-I Template
 GOVERNMENT OF MAHARASHTRA · MAHARASHTRA POLLUTION CONTROL BOARD
-FORM-I: APPLICATION FOR CONSENT TO ESTABLISH (Under Section 25 of Water Act & Section 21 of Air Act)
+FORM: COMBINED APPLICATION FOR CONSENT UNDER WATER ACT 1974, AIR ACT 1981 & HAZARDOUS WASTES RULES
 
 1. General Undertaking Details:
    - Name of Industrial Unit: _________________________________________
@@ -67,22 +95,26 @@ Date: ______________                                Signature of Authorized Sign
   },
   {
     id: 'form-dish-factory-licence',
-    form_name: 'Form 2: Application for Registration and Grant/Renewal of Licence for a Factory',
+    form_name: 'Form 2 / नमुना २: Application for Registration and Notice of Occupation for Factory License',
     document_type: 'Factory Layout Plan',
-    approval_patterns: ['Factory', 'DISH', 'Layout', 'Licence'],
-    source_label: 'Directorate of Industrial Safety & Health (DISH) · Maharashtra Factories Rules, 1963',
-    source_url: 'https://dish.maharashtra.gov.in',
+    approval_patterns: ['Factory', 'DISH', 'Layout', 'Licence', 'Kamgar'],
+    authority: 'Directorate of Industrial Safety & Health (DISH) / Maharashtra Labour Dept',
+    source_label: 'Official Maharashtra Labour Department Statutory Format (mahakamgar.maharashtra.gov.in)',
+    source_url: 'https://mahakamgar.maharashtra.gov.in/Site/Upload/Pdf/form-2.pdf',
     category: 'Statutory Prescribed Format',
-    version: 'Rule 4 & 7 Format',
-    effective_date: '2023-04-01',
+    provenance_status: 'VERIFIED_OFFICIAL_DOCUMENT',
+    version: 'Form 2 (Rules 5, 8, 11 and 14)',
+    effective_date: 'Maharashtra Factories Rules, 1963',
     description:
-      'Official statutory format for plant layout, machinery layout spacing, internal gangways, ventilation, and emergency egress specifications.',
-    file_name: 'DISH_Form_2_Factory_Licence_Application_Template.pdf',
+      'Official statutory bilingual (English & Marathi) application for factory registration, licence grant/renewal, installed power, and occupier/manager declaration under Sections 6 & 7.',
+    file_name: 'Maharashtra_Labour_Department_Form_2.pdf',
+    file_path: getAssetPath('Maharashtra_Labour_Department_Form_2.pdf'),
     mime_type: 'application/pdf',
+    is_online_application: false,
     template_content: `%PDF-1.4
 % Statutory Form 2 Template
 DIRECTORATE OF INDUSTRIAL SAFETY & HEALTH · GOVERNMENT OF MAHARASHTRA
-FORM 2: APPLICATION FOR REGISTRATION AND GRANT OF LICENCE FOR A FACTORY (Rules 4 and 7)
+FORM 2 / नमुना २: APPLICATION FOR REGISTRATION AND NOTICE OF OCCUPATION (Rules 5, 8, 11 and 14)
 
 1. Applicant Particulars:
    - Full Name of Factory: ___________________________________________
@@ -105,22 +137,104 @@ Date: ______________                                Signature of Occupier / Mana
 %%EOF`,
   },
   {
+    id: 'form-fssai-food-licence',
+    form_name: 'Form B: Application for License / Renewal under Food Safety and Standards Act, 2006',
+    document_type: 'Food Safety Management Plan',
+    approval_patterns: ['FSSAI', 'Food Safety', 'Food License', 'FoSCoS'],
+    authority: 'Food Safety and Standards Authority of India (FSSAI)',
+    source_label: 'Official FSSAI Regulations Compendium (Schedule 2) & FoSCoS Portal',
+    source_url: 'https://www.fssai.gov.in/upload/uploadfiles/files/Compendium_Licensing_Regulations_04_08_2021.pdf',
+    category: 'Statutory Prescribed Format',
+    provenance_status: 'VERIFIED_OFFICIAL_DOCUMENT',
+    is_online_application: true,
+    official_online_url: 'https://foscos.fssai.gov.in/apply-for-lic-and-reg',
+    online_portal_name: 'FoSCoS (Food Safety Compliance System)',
+    version: 'Schedule 2, Regulation 2.1.2/2.1.3',
+    effective_date: '2011 (Version II, 2017 amendments)',
+    description:
+      'Official statutory Form B application for Central/State food business licence, manufacturing installed capacity, and Annexure 2 document checklist.',
+    file_name: 'FSSAI_Licensing_Regulations_Form_B.pdf',
+    file_path: getAssetPath('FSSAI_Licensing_Regulations_Form_B.pdf'),
+    mime_type: 'application/pdf',
+    template_content: `%PDF-1.4
+% FSSAI Form B Statutory Template
+FOOD SAFETY AND STANDARDS AUTHORITY OF INDIA (FSSAI)
+FORM 'B': APPLICATION FOR LICENSE / RENEWAL UNDER FOOD SAFETY AND STANDARDS ACT, 2006 (Schedule 2)
+
+1. Food Business Operator Particulars:
+   - Name of Company / Organization: _________________________________
+   - Registered Office Address: ______________________________________
+   - Address of Authorized Premise for Manufacturing: _______________
+
+2. Kind of Business & Capacity:
+   - Processing / Manufacturing Capacity (MT/day): ___________________
+   - Food Categories Proposed to be Manufactured: ____________________
+
+3. Key Technical & Statutory Attachments:
+   - Blueprint / Layout Plan showing dimensions & area allocation: Attached
+   - List of Equipment and Machinery with installed HP: Attached
+   - Chemical & Bacteriological Water Analysis Report: Attached
+
+Date: ______________                                Signature of Applicant / Authorized Signatory
+%%EOF`,
+  },
+  {
+    id: 'form-midc-water-allotment',
+    form_name: 'MIDC Single Window Online Water Connection Application (AMId=528)',
+    document_type: 'Lease Agreement / Land Title',
+    approval_patterns: ['Water Supply', 'Water Connection', 'MIDC Water'],
+    authority: 'Maharashtra Industrial Development Corporation (MIDC)',
+    source_label: 'MIDC Single Window Clearance Portal & End-User Manual',
+    source_url: 'https://services.midcindia.org/services/AttachmentTemplates/MIDCUpload/Online_Water_Connection_Application_End_User_Manual.pdf',
+    category: 'Demonstration / Configurable Form',
+    provenance_status: 'OFFICIAL_ONLINE_PORTAL',
+    is_online_application: true,
+    official_online_url: 'https://services.midcindia.org/services/FillFormAnon.aspx?AMId=528',
+    online_portal_name: 'MIDC Single Window Clearance System (SWCS)',
+    version: 'Portal Service AMId=528',
+    effective_date: '2023-08-01',
+    description:
+      'MIDC processes water connections digitally via the Single Window Clearance portal. Below is a standardized engineering worksheet for internal water allocation demand calculation.',
+    file_name: 'MIDC_Water_Connection_Application_Worksheet.pdf',
+    mime_type: 'application/pdf',
+    template_content: `%PDF-1.4
+% MIDC Water Allotment Form
+MAHARASHTRA INDUSTRIAL DEVELOPMENT CORPORATION (MIDC)
+DEMONSTRATION WORKSHEET: INDUSTRIAL WATER ALLOTMENT & PIPELINE CONNECTION (Portal Reference: AMId=528)
+
+1. Plot & Allotment Particulars:
+   - Industrial Plot No: __________________  Industrial Area: ____________
+   - Lease Deed Execution Date: _______________________________________
+
+2. Requirement Details:
+   - Daily Quantity Required (Kilolitres/Day): ________________________
+   - Meter Connection Size (mm diameter): ____________________________
+
+Official Online Submission Portal: https://services.midcindia.org/services/FillFormAnon.aspx?AMId=528
+Date: ______________                                Signature of Applicant
+%%EOF`,
+  },
+  {
     id: 'form-midc-fire-safety',
     form_name: 'Annexure-A: Fire & Life Safety Assessment Requisition Form',
     document_type: 'Fire Safety Layout Drawing',
     approval_patterns: ['Fire', 'NOC', 'Safety'],
-    source_label: 'Maharashtra Fire Prevention and Life Safety Measures Act, 2006',
+    authority: 'Directorate of Maharashtra Fire Services / MIDC Fire Advisory',
+    source_label: 'Maharashtra Fire Prevention and Life Safety Measures Act, 2006 Baseline',
+    source_url: 'https://mahafireservice.gov.in',
     category: 'Demonstration / Configurable Form',
+    provenance_status: 'CONFIGURABLE_DEMONSTRATION',
     version: 'MFP-2023-A',
     effective_date: '2023-01-15',
     description:
-      'Standardized fire risk assessment checklist, hydrant/sprinkler layout requirements, and static water tank capacity calculation sheet.',
+      'Standardized demonstration fire risk assessment questionnaire, hydrant/sprinkler layout requirements, and static water tank capacity calculation sheet.',
     file_name: 'MIDC_Fire_Safety_NOC_Annexure_A_Template.pdf',
     mime_type: 'application/pdf',
+    is_online_application: false,
     template_content: `%PDF-1.4
 % Fire Safety Annexure A
 FIRE ADVISORY SERVICES · MAHARASHTRA INDUSTRIAL DEVELOPMENT CORPORATION
-ANNEXURE-A: PROVISIONAL FIRE SAFETY CLEARANCE QUESTIONNAIRE
+ANNEXURE-A: PROVISIONAL FIRE SAFETY CLEARANCE QUESTIONNAIRE (Configurable Demonstration Form)
 
 1. Site Particulars:
    - Building Classification: Industrial (Hazard Class: Low / Medium / High)
@@ -141,18 +255,22 @@ Date: ______________                                Signature of Architect / Fir
     form_name: 'Form A-1: Application for High Tension Industrial Power Supply',
     document_type: 'Industrial Electricity Sanction Letter',
     approval_patterns: ['Electricity', 'Power', 'MSEDCL', 'High Tension'],
+    authority: 'Maharashtra State Electricity Distribution Co. Ltd. (MSEDCL)',
     source_label: 'MSEDCL Industrial Supply Code Regulations · Regulation 4.2',
-    category: 'Statutory Prescribed Format',
+    source_url: 'https://www.mahadiscom.in',
+    category: 'Demonstration / Configurable Form',
+    provenance_status: 'CONFIGURABLE_DEMONSTRATION',
     version: 'MSEDCL-HT-2024',
     effective_date: '2024-03-01',
     description:
-      'Official requisition for industrial contract demand (kVA/kW), step-down transformer specifications, and single line diagram (SLD) declaration.',
+      'Standardized demonstration requisition for industrial contract demand (kVA/kW), step-down transformer specifications, and single line diagram (SLD) declaration.',
     file_name: 'MSEDCL_Form_A1_Industrial_Power_Supply_Template.pdf',
     mime_type: 'application/pdf',
+    is_online_application: false,
     template_content: `%PDF-1.4
 % MSEDCL A-1 Power Requisition Form
 MAHARASHTRA STATE ELECTRICITY DISTRIBUTION COMPANY LIMITED (MSEDCL)
-FORM A-1: REQUISITION FOR HIGH TENSION INDUSTRIAL ELECTRIC POWER SUPPLY
+FORM A-1: REQUISITION FOR HIGH TENSION INDUSTRIAL ELECTRIC POWER SUPPLY (Configurable Demonstration Form)
 
 1. Undertaking Particulars:
    - Consumer Name / Company: ________________________________________
@@ -165,35 +283,6 @@ FORM A-1: REQUISITION FOR HIGH TENSION INDUSTRIAL ELECTRIC POWER SUPPLY
    - Supply Voltage (11 kV / 22 kV / 33 kV): __________________________
 
 Date: ______________                                Signature of Registered Electrical Engineer
-%%EOF`,
-  },
-  {
-    id: 'form-midc-water-allotment',
-    form_name: 'Form W-1: Industrial Water Supply Allotment Application',
-    document_type: 'Lease Agreement / Land Title',
-    approval_patterns: ['Water Supply', 'Water Connection', 'MIDC Water'],
-    source_label: 'MIDC Water Supply Regulations & Byelaws',
-    category: 'Demonstration / Configurable Form',
-    version: 'MIDC-W1-v2',
-    effective_date: '2023-08-01',
-    description:
-      'Daily water allocation requisition sheet (domestic vs industrial process), effluent recycling percentage, and internal distribution blueprint.',
-    file_name: 'MIDC_Form_W1_Water_Allotment_Template.pdf',
-    mime_type: 'application/pdf',
-    template_content: `%PDF-1.4
-% MIDC Water Allotment Form
-MAHARASHTRA INDUSTRIAL DEVELOPMENT CORPORATION (MIDC)
-FORM W-1: INDUSTRIAL WATER ALLOTMENT & PIPELINE CONNECTION
-
-1. Plot & Allotment Particulars:
-   - Industrial Plot No: __________________  Industrial Area: ____________
-   - Lease Deed Execution Date: _______________________________________
-
-2. Requirement Details:
-   - Daily Quantity Required (Kilolitres/Day): ________________________
-   - Meter Connection Size (mm diameter): ____________________________
-
-Date: ______________                                Signature of Applicant
 %%EOF`,
   },
 ];

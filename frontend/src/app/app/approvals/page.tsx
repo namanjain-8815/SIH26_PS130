@@ -23,10 +23,11 @@ import {
   ShieldAlert,
 } from 'lucide-react';
 import type { ProjectApproval as BaseProjectApproval } from '@/types';
+import type { ProjectApprovalDetail, ParallelOrchestrationResult } from '@/types/api';
+import { PrescribedFormCard } from '@/components/forms/PrescribedFormCard';
+import { ParallelOrchestrationModal } from '@/components/orchestration/ParallelOrchestrationModal';
 
 type ProjectApproval = BaseProjectApproval & { priority?: string };
-import type { ProjectApprovalDetail } from '@/types/api';
-import { PrescribedFormCard } from '@/components/forms/PrescribedFormCard';
 
 const DEMO_PROJECT_ID = 'proj-abc-foods-001';
 
@@ -35,6 +36,7 @@ type StatusFilter = 'ALL' | 'NOT_STARTED' | 'IN_PROGRESS' | 'BLOCKED' | 'COMPLET
 export default function ApprovalsPage() {
   const [filter, setFilter] = useState<StatusFilter>('ALL');
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [orchestrationResult, setOrchestrationResult] = useState<ParallelOrchestrationResult | null>(null);
   const qc = useQueryClient();
 
   const { data: approvals, isLoading, error, refetch } = useQuery({
@@ -47,34 +49,6 @@ export default function ApprovalsPage() {
     queryFn: () => projectApprovalsApi.get(selectedId!),
     enabled: !!selectedId,
   });
-
-  const [orchestrationResult, setOrchestrationResult] = useState<{
-    started: Array<{
-      project_approval_id: string;
-      approval_name: string;
-      authority: string;
-      application_id: string;
-      application_number: string;
-      status: string;
-    }>;
-    already_active: Array<{
-      project_approval_id: string;
-      approval_name: string;
-      application_id: string;
-      application_number: string;
-      status: string;
-    }>;
-    blocked_by_prerequisites: Array<{
-      project_approval_id: string;
-      approval_name: string;
-      missing_prerequisites: string[];
-    }>;
-    summary: {
-      started_count: number;
-      already_active_count: number;
-      blocked_count: number;
-    };
-  } | null>(null);
 
   const startEligible = useMutation({
     mutationFn: () => projectsApi.startEligibleApplications(DEMO_PROJECT_ID),
@@ -195,140 +169,12 @@ export default function ApprovalsPage() {
       )}
 
       {/* Parallel Orchestration Outcome Modal */}
-      {orchestrationResult && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 animate-fade-in">
-          <div className="bg-white rounded-2xl max-w-xl w-full p-6 shadow-2xl space-y-5 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-start justify-between border-b border-gray-100 pb-3">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
-                  <Zap className="w-4 h-4" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold text-gray-900">Parallel Application Orchestration</h3>
-                  <p className="text-xs text-gray-500">
-                    Initiated eligible clearances with satisfied statutory prerequisites
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={() => setOrchestrationResult(null)}
-                className="p-1 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-700"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* Summary metrics */}
-            <div className="grid grid-cols-3 gap-3">
-              <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-100 text-center">
-                <p className="text-xs text-emerald-800 font-semibold">Started Now</p>
-                <p className="text-xl font-bold text-emerald-900 mt-0.5">
-                  {orchestrationResult.summary.started_count}
-                </p>
-              </div>
-              <div className="p-3 bg-blue-50 rounded-xl border border-blue-100 text-center">
-                <p className="text-xs text-blue-800 font-semibold">Already Active</p>
-                <p className="text-xl font-bold text-blue-900 mt-0.5">
-                  {orchestrationResult.summary.already_active_count}
-                </p>
-              </div>
-              <div className="p-3 bg-amber-50 rounded-xl border border-amber-100 text-center">
-                <p className="text-xs text-amber-800 font-semibold">Blocked</p>
-                <p className="text-xl font-bold text-amber-900 mt-0.5">
-                  {orchestrationResult.summary.blocked_count}
-                </p>
-              </div>
-            </div>
-
-            {/* Started Workspaces */}
-            {orchestrationResult.started.length > 0 && (
-              <div className="space-y-2">
-                <h4 className="text-xs font-bold text-gray-900 flex items-center gap-1.5 uppercase tracking-wide">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                  Newly Started Application Workspaces ({orchestrationResult.started.length})
-                </h4>
-                <div className="space-y-2">
-                  {orchestrationResult.started.map((item) => (
-                    <div
-                      key={item.application_id}
-                      className="p-3 bg-emerald-50/50 border border-emerald-200/80 rounded-xl flex items-center justify-between gap-3 text-xs"
-                    >
-                      <div>
-                        <p className="font-semibold text-gray-900">{item.approval_name}</p>
-                        <p className="text-[11px] text-gray-500 mt-0.5">
-                          {item.authority} • Ref #{item.application_number}
-                        </p>
-                      </div>
-                      <Link
-                        href={`/app/applications/${item.application_id}`}
-                        className="btn-primary text-xs py-1 px-2.5 inline-flex items-center gap-1"
-                      >
-                        Open Workspace <ExternalLink className="w-3 h-3" />
-                      </Link>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Blocked Clearances */}
-            {orchestrationResult.blocked_by_prerequisites.length > 0 && (
-              <div className="space-y-2">
-                <h4 className="text-xs font-bold text-gray-900 flex items-center gap-1.5 uppercase tracking-wide">
-                  <ShieldAlert className="w-3.5 h-3.5 text-amber-600" />
-                  Clearances Pending Prior Approvals ({orchestrationResult.blocked_by_prerequisites.length})
-                </h4>
-                <div className="space-y-1.5">
-                  {orchestrationResult.blocked_by_prerequisites.map((b) => (
-                    <div key={b.project_approval_id} className="p-2.5 bg-gray-50 border border-gray-100 rounded-lg text-xs">
-                      <p className="font-semibold text-gray-800">{b.approval_name}</p>
-                      <p className="text-[11px] text-amber-700 mt-0.5">
-                        Requires prior clearance of: {b.missing_prerequisites.join(', ')}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Already Active */}
-            {orchestrationResult.already_active.length > 0 && (
-              <div className="space-y-2">
-                <h4 className="text-xs font-bold text-gray-900 flex items-center gap-1.5 uppercase tracking-wide">
-                  <Clock className="w-3.5 h-3.5 text-blue-600" />
-                  Workflows Already In Progress ({orchestrationResult.already_active.length})
-                </h4>
-                <div className="space-y-1.5">
-                  {orchestrationResult.already_active.map((a) => (
-                    <div
-                      key={a.application_id}
-                      className="p-2.5 bg-blue-50/40 border border-blue-100 rounded-lg flex items-center justify-between text-xs"
-                    >
-                      <span className="font-medium text-gray-900">{a.approval_name}</span>
-                      <Link
-                        href={`/app/applications/${a.application_id}`}
-                        className="text-primary-600 font-semibold hover:underline inline-flex items-center gap-1"
-                      >
-                        Workspace #{a.application_number} →
-                      </Link>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <div className="pt-3 border-t border-gray-100 flex justify-end">
-              <button
-                type="button"
-                onClick={() => setOrchestrationResult(null)}
-                className="btn-primary text-xs"
-              >
-                Close & Return to Roadmap
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ParallelOrchestrationModal
+        isOpen={!!orchestrationResult}
+        onClose={() => setOrchestrationResult(null)}
+        result={orchestrationResult}
+        projectName="ABC Foods Pune Expansion"
+      />
     </div>
   );
 }

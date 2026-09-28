@@ -14,6 +14,8 @@ import governmentRoutes from './government';
 import adminRoutes from './admin';
 import notificationRoutes from './notifications';
 import facilitationRoutes from './facilitation';
+import guidanceRoutes from './guidance';
+import digilockerRoutes from './digilocker';
 
 export const router = Router();
 
@@ -28,6 +30,8 @@ router.use('/', inspectionRoutes);
 router.use('/', slaRoutes);
 router.use('/', incentiveRoutes);
 router.use('/', complianceRoutes);
+router.use('/', guidanceRoutes);
+router.use('/', digilockerRoutes);
 router.use('/government', governmentRoutes);
 router.use('/admin', adminRoutes);
 router.use('/notifications', notificationRoutes);

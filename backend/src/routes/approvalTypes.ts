@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import fs from 'fs';
 import { requireAuth } from '../middleware/auth';
 import * as approvalService from '../services/approvalService';
 import {
@@ -45,7 +46,13 @@ router.get('/prescribed-forms/:id/download', requireAuth, async (req, res, next)
     }
     res.setHeader('Content-Disposition', `attachment; filename="${form.file_name}"`);
     res.setHeader('Content-Type', form.mime_type);
-    res.send(form.template_content);
+
+    if (form.file_path && fs.existsSync(form.file_path)) {
+      const stream = fs.createReadStream(form.file_path);
+      stream.pipe(res);
+    } else {
+      res.send(form.template_content);
+    }
   } catch (err) {
     next(err);
   }
@@ -56,6 +63,19 @@ router.get('/approval-types/:id/prescribed-form', requireAuth, async (req, res, 
     const approvalType = await approvalService.getApprovalType(req.params.id);
     const form = getPrescribedFormForApproval(approvalType.name);
     res.json(form);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/approval-types/:id/check-applicability', requireAuth, async (req, res, next) => {
+  try {
+    const { project_id } = req.body;
+    if (!project_id) {
+      return res.status(400).json({ error: 'project_id is required' });
+    }
+    const result = await approvalService.checkApprovalApplicability(req.params.id, project_id);
+    res.json(result);
   } catch (err) {
     next(err);
   }

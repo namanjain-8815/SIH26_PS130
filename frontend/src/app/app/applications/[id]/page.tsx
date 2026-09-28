@@ -23,9 +23,12 @@ import type {
   DocumentPreValidationResult,
 } from '@/types/api';
 import { DocumentPreValidationCard } from '@/components/documents/DocumentPreValidationCard';
+import { CrossDocumentConsistencyCard } from '@/components/documents/CrossDocumentConsistencyCard';
+import { DocumentGuidanceChecklist } from '@/components/documents/DocumentGuidanceChecklist';
 import { PrescribedFormCard } from '@/components/forms/PrescribedFormCard';
 import { ScrutinyPriorityCard } from '@/components/scrutiny/ScrutinyPriorityCard';
 import { ScrutinyPriorityBadge } from '@/components/scrutiny/ScrutinyPriorityBadge';
+import { CommonApplicationFormView } from '@/components/applications/CommonApplicationFormView';
 import {
   ArrowLeft,
   FileCheck2,
@@ -54,7 +57,7 @@ import {
   Database,
 } from 'lucide-react';
 
-type Tab = 'overview' | 'documents' | 'readiness' | 'queries' | 'inspections' | 'timeline';
+type Tab = 'overview' | 'form' | 'documents' | 'readiness' | 'queries' | 'inspections' | 'timeline';
 
 export default function ApplicationWorkspacePage() {
   const params = useParams();
@@ -163,6 +166,20 @@ export default function ApplicationWorkspacePage() {
     mutationFn: () => applicationsApi.runReadinessCheck(applicationId),
   });
 
+  // Cross-document consistency query
+  const consistencyQuery = useQuery({
+    queryKey: ['application-consistency', applicationId],
+    queryFn: () => applicationsApi.getDocumentConsistency(applicationId),
+    enabled: !!applicationId && (activeTab === 'documents' || activeTab === 'readiness'),
+  });
+
+  // Document guidance & checklist query (P0.6)
+  const documentChecklistQuery = useQuery({
+    queryKey: ['application-document-checklist', applicationId],
+    queryFn: () => applicationsApi.getDocumentChecklist(applicationId),
+    enabled: !!applicationId && (activeTab === 'documents' || activeTab === 'readiness'),
+  });
+
   // Status transition mutation
   const updateStatus = useMutation({
     mutationFn: ({ status, notes }: { status: string; notes?: string }) =>
@@ -180,6 +197,8 @@ export default function ApplicationWorkspacePage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['application-detail', applicationId] });
       qc.invalidateQueries({ queryKey: ['documents', projectId] });
+      qc.invalidateQueries({ queryKey: ['application-consistency', applicationId] });
+      qc.invalidateQueries({ queryKey: ['application-document-checklist', applicationId] });
       setShowAttachVaultModal(false);
     },
   });
@@ -190,6 +209,8 @@ export default function ApplicationWorkspacePage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['application-detail', applicationId] });
       qc.invalidateQueries({ queryKey: ['documents', projectId] });
+      qc.invalidateQueries({ queryKey: ['application-consistency', applicationId] });
+      qc.invalidateQueries({ queryKey: ['application-document-checklist', applicationId] });
     },
   });
 
@@ -216,6 +237,8 @@ export default function ApplicationWorkspacePage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['application-detail', applicationId] });
       qc.invalidateQueries({ queryKey: ['documents', projectId] });
+      qc.invalidateQueries({ queryKey: ['application-consistency', applicationId] });
+      qc.invalidateQueries({ queryKey: ['application-document-checklist', applicationId] });
       setShowUploadModal(false);
       setUploadFile(null);
       setUploadDocType('');
@@ -244,6 +267,8 @@ export default function ApplicationWorkspacePage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['application-detail', applicationId] });
       qc.invalidateQueries({ queryKey: ['documents', projectId] });
+      qc.invalidateQueries({ queryKey: ['application-consistency', applicationId] });
+      qc.invalidateQueries({ queryKey: ['application-document-checklist', applicationId] });
       setShowReplaceModal(null);
       setUploadFile(null);
     },
@@ -362,6 +387,16 @@ export default function ApplicationWorkspacePage() {
 
           {/* Quick Header Actions */}
           <div className="flex items-center gap-2">
+            {isSubmittableState && (
+              <button
+                onClick={() => setActiveTab('form')}
+                className="btn-secondary text-xs py-1.5 flex items-center gap-1.5"
+              >
+                <FileCheck2 className="w-3.5 h-3.5 text-primary-600" />
+                Fill Application Form (CAF)
+              </button>
+            )}
+
             <button
               onClick={() => {
                 setActiveTab('readiness');
@@ -389,6 +424,7 @@ export default function ApplicationWorkspacePage() {
         <div className="flex items-center gap-1 mt-5 border-b border-gray-100 -mb-4">
           {[
             { id: 'overview', label: 'Overview', icon: Building2 },
+            { id: 'form', label: 'Application Form (CAF)', icon: FileCheck2 },
             { id: 'documents', label: `Documents (${attachedDocs.length})`, icon: FileText },
             { id: 'readiness', label: 'Readiness Check', icon: ShieldCheck },
             {
@@ -500,6 +536,37 @@ export default function ApplicationWorkspacePage() {
                     <p className="text-[11px] text-gray-500 mt-1 line-clamp-1">{s.desc}</p>
                   </div>
                 ))}
+              </div>
+            </div>
+
+            {/* Common Application Form Callout Banner */}
+            <div className="bg-gradient-to-r from-primary-900 to-indigo-900 rounded-xl p-5 text-white flex flex-wrap items-center justify-between gap-4 shadow-sm">
+              <div className="space-y-1 max-w-2xl">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-bold tracking-wider uppercase bg-white/20 text-white px-2 py-0.5 rounded">
+                    Unified Single Window CAF
+                  </span>
+                  <span className="text-[11px] text-emerald-300 font-semibold flex items-center gap-1">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" /> Pre-Populated from Master Profile
+                  </span>
+                </div>
+                <h3 className="text-base font-bold text-white">Unified Common Application Form</h3>
+                <p className="text-xs text-white/80 leading-relaxed">
+                  Applicant entity identity, project parameters, and site location are automatically pre-filled
+                  from your verified Master Business Profile. Fill department-specific parameters and review
+                  attachments before official transmission.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('form')}
+                  className="bg-white text-primary-900 hover:bg-gray-100 font-bold text-xs py-2.5 px-4 rounded-lg flex items-center gap-2 shadow-sm transition-all"
+                >
+                  <FileCheck2 className="w-4 h-4 text-primary-700" />
+                  <span>Open Application Form</span>
+                </button>
               </div>
             </div>
 
@@ -750,7 +817,22 @@ export default function ApplicationWorkspacePage() {
           </div>
         )}
 
-        {/* TAB 2: DOCUMENTS */}
+        {/* TAB 2: COMMON APPLICATION FORM (CAF) */}
+        {activeTab === 'form' && (
+          <div className="space-y-6 animate-fade-in">
+            <CommonApplicationFormView
+              applicationId={applicationId}
+              projectId={projectId}
+              onNavigateToDocuments={() => setActiveTab('documents')}
+              onSubmitSuccess={() => {
+                refetch();
+                setActiveTab('overview');
+              }}
+            />
+          </div>
+        )}
+
+        {/* TAB 3: DOCUMENTS */}
         {activeTab === 'documents' && (
           <div className="space-y-5 animate-fade-in">
             <div className="flex items-center justify-between">
@@ -792,61 +874,77 @@ export default function ApplicationWorkspacePage() {
               />
             )}
 
-            {/* Document Requirements Checklist vs Attached */}
-            <div className="card p-5">
-              <h3 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-3">
-                Mandatory & Optional Checklist for {approvalType.name}
-              </h3>
-              <div className="space-y-2">
-                {approvalType.document_requirements?.map((req) => {
-                  const attached = attachedDocs.find((ad) => ad.document.document_type === req.document_type);
-                  return (
-                    <div
-                      key={req.id}
-                      className="flex items-center justify-between p-3 rounded-lg border border-gray-100 bg-gray-50/50 hover:bg-gray-50"
-                    >
-                      <div className="flex items-center gap-3">
-                        {attached ? (
-                          <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0" />
-                        ) : (
-                          <XCircle className="w-4 h-4 text-red-400 flex-shrink-0" />
-                        )}
+            {/* Stronger Document Guidance & Checklist (P0.6) */}
+            {documentChecklistQuery.data ? (
+              <DocumentGuidanceChecklist
+                checklist={documentChecklistQuery.data}
+                isLoading={documentChecklistQuery.isLoading}
+                onAttachFromVault={(vaultDocId) => attachDoc.mutate(vaultDocId)}
+                onUpload={(docType) => {
+                  setUploadDocType(docType);
+                  setShowUploadModal(true);
+                }}
+                onReplace={(docId) => setShowReplaceModal(docId)}
+                onDetach={(docId) => detachDoc.mutate(docId)}
+                onRefresh={() => documentChecklistQuery.refetch()}
+              />
+            ) : (
+              /* Document Requirements Checklist vs Attached Fallback */
+              <div className="card p-5">
+                <h3 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-3">
+                  Mandatory & Optional Checklist for {approvalType.name}
+                </h3>
+                <div className="space-y-2">
+                  {approvalType.document_requirements?.map((req) => {
+                    const attached = attachedDocs.find((ad) => ad.document.document_type === req.document_type);
+                    return (
+                      <div
+                        key={req.id}
+                        className="flex items-center justify-between p-3 rounded-lg border border-gray-100 bg-gray-50/50 hover:bg-gray-50"
+                      >
+                        <div className="flex items-center gap-3">
+                          {attached ? (
+                            <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0" />
+                          ) : (
+                            <XCircle className="w-4 h-4 text-red-400 flex-shrink-0" />
+                          )}
+                          <div>
+                            <p className="text-xs font-semibold text-gray-900">{req.document_type}</p>
+                            <p className="text-[11px] text-gray-500">
+                              {req.mandatory ? (
+                                <span className="text-red-600 font-medium">Mandatory</span>
+                              ) : (
+                                'Optional / Conditional'
+                              )}
+                              {req.condition && ` • ${req.condition}`}
+                            </p>
+                          </div>
+                        </div>
+
                         <div>
-                          <p className="text-xs font-semibold text-gray-900">{req.document_type}</p>
-                          <p className="text-[11px] text-gray-500">
-                            {req.mandatory ? (
-                              <span className="text-red-600 font-medium">Mandatory</span>
-                            ) : (
-                              'Optional / Conditional'
-                            )}
-                            {req.condition && ` • ${req.condition}`}
-                          </p>
+                          {attached ? (
+                            <div className="flex items-center gap-2">
+                              <span className="text-[11px] text-gray-600 font-mono">{attached.document.file_name}</span>
+                              <StatusBadge status={attached.document.verification_status} size="sm" />
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => {
+                                setUploadDocType(req.document_type);
+                                setShowUploadModal(true);
+                              }}
+                              className="text-xs text-primary-600 font-semibold hover:underline"
+                            >
+                              + Attach Now
+                            </button>
+                          )}
                         </div>
                       </div>
-
-                      <div>
-                        {attached ? (
-                          <div className="flex items-center gap-2">
-                            <span className="text-[11px] text-gray-600 font-mono">{attached.document.file_name}</span>
-                            <StatusBadge status={attached.document.verification_status} size="sm" />
-                          </div>
-                        ) : (
-                          <button
-                            onClick={() => {
-                              setUploadDocType(req.document_type);
-                              setShowUploadModal(true);
-                            }}
-                            className="text-xs text-primary-600 font-semibold hover:underline"
-                          >
-                            + Attach Now
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
               </div>
-            </div>
+            )}
 
             {/* Attached Documents Table */}
             <div className="card overflow-hidden">
@@ -921,6 +1019,16 @@ export default function ApplicationWorkspacePage() {
                 </table>
               )}
             </div>
+
+            {/* Cross-Document Consistency Audit (P0.5) */}
+            {attachedDocs.length >= 2 && (
+              <CrossDocumentConsistencyCard
+                result={consistencyQuery.data}
+                isLoading={consistencyQuery.isLoading}
+                onRecheck={() => consistencyQuery.refetch()}
+                title="Cross-Document Discrepancy & Statutory Consistency Audit"
+              />
+            )}
           </div>
         )}
 
@@ -1043,22 +1151,42 @@ export default function ApplicationWorkspacePage() {
                     ))}
                   </div>
                 </div>
+
+                {/* Cross-Document Consistency Result (P0.5) */}
+                <CrossDocumentConsistencyCard
+                  result={readinessCheck.data.cross_document_consistency || consistencyQuery.data}
+                  isLoading={readinessCheck.isPending || consistencyQuery.isFetching}
+                  onRecheck={() => {
+                    readinessCheck.mutate();
+                    consistencyQuery.refetch();
+                  }}
+                />
               </div>
             ) : (
-              <div className="card p-8 text-center space-y-3">
-                <FileCheck2 className="w-12 h-12 text-gray-300 mx-auto" />
-                <h3 className="text-sm font-semibold text-gray-800">No Readiness Evaluation Performed Yet</h3>
-                <p className="text-xs text-gray-500 max-w-md mx-auto">
-                  Click the button below to validate all document requirements, verification statuses, and department
-                  readiness rules.
-                </p>
-                <button
-                  onClick={() => readinessCheck.mutate()}
-                  disabled={readinessCheck.isPending}
-                  className="btn-primary text-xs py-2 px-4 mx-auto"
-                >
-                  Evaluate Readiness Now
-                </button>
+              <div className="space-y-4">
+                <div className="card p-8 text-center space-y-3">
+                  <FileCheck2 className="w-12 h-12 text-gray-300 mx-auto" />
+                  <h3 className="text-sm font-semibold text-gray-800">No Readiness Evaluation Performed Yet</h3>
+                  <p className="text-xs text-gray-500 max-w-md mx-auto">
+                    Click the button below to validate all document requirements, verification statuses, and department
+                    readiness rules.
+                  </p>
+                  <button
+                    onClick={() => readinessCheck.mutate()}
+                    disabled={readinessCheck.isPending}
+                    className="btn-primary text-xs py-2 px-4 mx-auto"
+                  >
+                    Evaluate Readiness Now
+                  </button>
+                </div>
+
+                {consistencyQuery.data && (
+                  <CrossDocumentConsistencyCard
+                    result={consistencyQuery.data}
+                    isLoading={consistencyQuery.isFetching}
+                    onRecheck={() => consistencyQuery.refetch()}
+                  />
+                )}
               </div>
             )}
           </div>

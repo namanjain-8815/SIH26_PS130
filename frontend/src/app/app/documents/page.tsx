@@ -8,6 +8,9 @@ import { formatDate } from '@/lib/utils';
 import { useState } from 'react';
 import type { DocumentItem, DocumentPreValidationResult } from '@/types/api';
 import { DocumentPreValidationCard } from '@/components/documents/DocumentPreValidationCard';
+import { CrossDocumentConsistencyCard } from '@/components/documents/CrossDocumentConsistencyCard';
+import { ClearanceDocumentGuidanceView } from '@/components/documents/ClearanceDocumentGuidanceView';
+import { DigiLockerVerificationCard } from '@/components/documents/DigiLockerVerificationCard';
 import {
   FileText,
   Upload,
@@ -19,6 +22,7 @@ import {
   Eye,
   FilePlus,
   Layers,
+  ShieldCheck,
   X,
 } from 'lucide-react';
 
@@ -26,7 +30,9 @@ const DEMO_PROJECT_ID = 'proj-abc-foods-001';
 
 export default function DocumentsPage() {
   const qc = useQueryClient();
+  const [viewMode, setViewMode] = useState<'vault' | 'guidance'>('vault');
   const [showMissing, setShowMissing] = useState(false);
+  const [showConsistency, setShowConsistency] = useState(false);
 
   // Modals
   const [showUploadModal, setShowUploadModal] = useState(false);
@@ -117,6 +123,25 @@ export default function DocumentsPage() {
     enabled: !!viewDocDetailId,
   });
 
+  const {
+    data: consistencyData,
+    isLoading: isConsistencyLoading,
+    refetch: refetchConsistency,
+  } = useQuery({
+    queryKey: ['project-document-consistency', DEMO_PROJECT_ID],
+    queryFn: () => projectsApi.getDocumentConsistency(DEMO_PROJECT_ID),
+    enabled: showConsistency,
+  });
+
+  const {
+    data: projectChecklist,
+    isLoading: isProjectChecklistLoading,
+    refetch: refetchProjectChecklist,
+  } = useQuery({
+    queryKey: ['project-document-checklist', DEMO_PROJECT_ID],
+    queryFn: () => projectsApi.getDocumentChecklist(DEMO_PROJECT_ID),
+  });
+
   // Upload mutation
   const uploadDoc = useMutation({
     mutationFn: async ({ docType, file, expiry }: { docType: string; file: File; expiry?: string }) => {
@@ -131,6 +156,8 @@ export default function DocumentsPage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['documents', DEMO_PROJECT_ID] });
       qc.invalidateQueries({ queryKey: ['missing-docs', DEMO_PROJECT_ID] });
+      qc.invalidateQueries({ queryKey: ['project-document-consistency', DEMO_PROJECT_ID] });
+      qc.invalidateQueries({ queryKey: ['project-document-checklist', DEMO_PROJECT_ID] });
       setShowUploadModal(false);
       setUploadFile(null);
       setUploadDocType('');
@@ -150,6 +177,8 @@ export default function DocumentsPage() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['documents', DEMO_PROJECT_ID] });
+      qc.invalidateQueries({ queryKey: ['project-document-consistency', DEMO_PROJECT_ID] });
+      qc.invalidateQueries({ queryKey: ['project-document-checklist', DEMO_PROJECT_ID] });
       setReplaceDocId(null);
       setReplaceFile(null);
       setReplaceExpiryDate('');
@@ -178,6 +207,15 @@ export default function DocumentsPage() {
         </div>
         <div className="flex items-center gap-2">
           <button
+            onClick={() => setShowConsistency(!showConsistency)}
+            className={`btn-secondary text-xs py-1.5 transition-colors ${
+              showConsistency ? 'bg-blue-50 border-blue-200 text-blue-700 font-semibold' : ''
+            }`}
+          >
+            <Layers className="w-3.5 h-3.5 text-blue-600" />
+            {showConsistency ? 'Hide Consistency Audit' : 'Consistency Audit'}
+          </button>
+          <button
             onClick={() => setShowMissing(!showMissing)}
             className="btn-secondary text-xs py-1.5"
           >
@@ -196,7 +234,48 @@ export default function DocumentsPage() {
         </div>
       </div>
 
-      {/* Stats row */}
+      {/* DigiLocker Verification — Prototype Simulation (P1.X) */}
+      <DigiLockerVerificationCard projectId={DEMO_PROJECT_ID} />
+
+      {/* Primary Vault View Switcher (P0.6) */}
+      <div className="flex items-center gap-2 border-b border-gray-200 pb-2">
+        <button
+          onClick={() => setViewMode('vault')}
+          className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${
+            viewMode === 'vault'
+              ? 'bg-blue-600 text-white shadow-sm'
+              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+          }`}
+        >
+          <FileText className="w-3.5 h-3.5" />
+          Uploaded Vault Documents ({documents.length})
+        </button>
+        <button
+          onClick={() => setViewMode('guidance')}
+          className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${
+            viewMode === 'guidance'
+              ? 'bg-blue-600 text-white shadow-sm'
+              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+          }`}
+        >
+          <ShieldCheck className="w-3.5 h-3.5" />
+          Statutory Guidance by Clearance ({projectChecklist?.clearances.length || 0})
+        </button>
+      </div>
+
+      {viewMode === 'guidance' ? (
+        <ClearanceDocumentGuidanceView
+          data={projectChecklist}
+          isLoading={isProjectChecklistLoading}
+          onUpload={(docType) => {
+            setUploadDocType(docType);
+            setShowUploadModal(true);
+          }}
+          onRefresh={() => refetchProjectChecklist()}
+        />
+      ) : (
+        <>
+          {/* Stats row */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         {[
           { label: 'Total', val: stats.total, color: 'text-gray-700 bg-gray-50', border: 'border-gray-200' },
@@ -211,6 +290,18 @@ export default function DocumentsPage() {
           </div>
         ))}
       </div>
+
+      {/* Cross-Document Consistency Audit Panel (P0.5) */}
+      {showConsistency && (
+        <div className="space-y-2">
+          <CrossDocumentConsistencyCard
+            result={consistencyData}
+            isLoading={isConsistencyLoading}
+            onRecheck={() => refetchConsistency()}
+            title="Project Document Vault — Cross-Document Consistency Audit"
+          />
+        </div>
+      )}
 
       {/* Missing documents panel */}
       {showMissing && missing && (
@@ -317,6 +408,8 @@ export default function DocumentsPage() {
           </table>
         )}
       </div>
+      </>
+      )}
 
       {/* MODAL: Upload Document */}
       {showUploadModal && (
@@ -604,7 +697,15 @@ function DocumentRow({
         </div>
       </td>
       <td className="px-4 py-3">
-        <StatusBadge status={doc.verification_status} size="sm" />
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <StatusBadge status={doc.verification_status} size="sm" />
+          {['Company PAN Card', 'Land Ownership / Lease Agreement', 'Memorandum of Association (MoA)'].includes(doc.document_type) && doc.verification_status === 'VERIFIED' && (
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200" title="Retrieved & verified via DigiLocker simulation">
+              <ShieldCheck className="w-3 h-3 text-emerald-600" />
+              DigiLocker
+            </span>
+          )}
+        </div>
         {doc.is_expiring_soon && (
           <p className="text-[10px] text-orange-600 mt-1 font-medium">Expiring soon</p>
         )}

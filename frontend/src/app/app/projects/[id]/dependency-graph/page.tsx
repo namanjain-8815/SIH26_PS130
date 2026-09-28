@@ -1,10 +1,10 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { projectsApi } from '@/lib/api';
 import { ErrorState, CardSkeleton } from '@/components/ui/States';
 import { StatusBadge } from '@/components/ui/StatusBadge';
-import { useCallback } from 'react';
+import { useCallback, useState, useEffect } from 'react';
 import ReactFlow, {
   Background,
   Controls,
@@ -17,8 +17,9 @@ import ReactFlow, {
   type Connection,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
-import { useEffect } from 'react';
-import { CheckCircle2, Clock, AlertCircle, Circle, Play } from 'lucide-react';
+import { CheckCircle2, Clock, AlertCircle, Circle, Play, Zap } from 'lucide-react';
+import { ParallelOrchestrationModal } from '@/components/orchestration/ParallelOrchestrationModal';
+import type { ParallelOrchestrationResult } from '@/types/api';
 
 const DEMO_PROJECT_ID = 'proj-abc-foods-001';
 
@@ -148,10 +149,24 @@ function computeLayout(
   });
 }
 
-export default function DependencyGraphPage() {
+export default function DependencyGraphPage({ params }: { params?: { id?: string } }) {
+  const effectiveProjectId = params?.id || DEMO_PROJECT_ID;
+  const qc = useQueryClient();
+  const [orchestrationResult, setOrchestrationResult] = useState<ParallelOrchestrationResult | null>(null);
+
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['dependency-graph', DEMO_PROJECT_ID],
-    queryFn: () => projectsApi.getDependencyGraph(DEMO_PROJECT_ID),
+    queryKey: ['dependency-graph', effectiveProjectId],
+    queryFn: () => projectsApi.getDependencyGraph(effectiveProjectId),
+  });
+
+  const startEligible = useMutation({
+    mutationFn: () => projectsApi.startEligibleApplications(effectiveProjectId),
+    onSuccess: (res) => {
+      setOrchestrationResult(res);
+      qc.invalidateQueries({ queryKey: ['dependency-graph', effectiveProjectId] });
+      qc.invalidateQueries({ queryKey: ['control-centre', effectiveProjectId] });
+      qc.invalidateQueries({ queryKey: ['project-approvals'] });
+    },
   });
 
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
@@ -188,13 +203,25 @@ export default function DependencyGraphPage() {
     <div className="flex flex-col h-full">
       {/* Header */}
       <div className="px-5 pt-5 pb-4 border-b border-gray-100">
-        <h1 className="text-lg font-bold text-gray-900">Permissions & Approvals Dependency Map</h1>
-        <p className="text-xs text-gray-500 mt-0.5">
-          Visualise the statutory prerequisite order in which permissions and clearances must be obtained. Green animated arrows indicate active parallel paths.
-        </p>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h1 className="text-lg font-bold text-gray-900">Permissions & Approvals Dependency Map</h1>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Visualise the statutory prerequisite order in which permissions and clearances must be obtained. Green animated arrows indicate active parallel paths.
+            </p>
+          </div>
+          <button
+            onClick={() => startEligible.mutate()}
+            disabled={startEligible.isPending}
+            className="btn-primary text-xs py-2 px-3.5 bg-emerald-600 hover:bg-emerald-700 flex items-center gap-1.5 shadow-sm self-start sm:self-auto"
+          >
+            <Zap className={`w-3.5 h-3.5 ${startEligible.isPending ? 'animate-spin' : ''}`} />
+            {startEligible.isPending ? 'Orchestrating...' : 'Start Eligible Clearances'}
+          </button>
+        </div>
 
         {data && (
-          <div className="flex items-center gap-3 mt-3">
+          <div className="flex items-center gap-3 mt-3 flex-wrap">
             {[
               { label: 'Total', val: data.summary.total, color: 'bg-gray-100 text-gray-700' },
               { label: 'Completed', val: data.summary.completed, color: 'bg-green-100 text-green-700' },
@@ -243,6 +270,14 @@ export default function DependencyGraphPage() {
           />
         </ReactFlow>
       </div>
+
+      {/* Parallel Orchestration Modal */}
+      <ParallelOrchestrationModal
+        isOpen={!!orchestrationResult}
+        onClose={() => setOrchestrationResult(null)}
+        result={orchestrationResult}
+        projectName="Project Dependency Graph"
+      />
     </div>
   );
 }

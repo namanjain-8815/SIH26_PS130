@@ -74,7 +74,9 @@ describe('P1.11 — Project Submission Centre Integration Tests', () => {
     assert.strictEqual(res.status, 200);
     const data = (await res.json()) as any;
 
-    const blockedItem = data.clearances.find((c: any) => c.has_unmet_prerequisites);
+    const blockedItem =
+      data.clearances.find((c: any) => c.category === 'BLOCKED_BY_PREREQUISITES') ||
+      data.clearances.find((c: any) => c.has_unmet_prerequisites && c.category !== 'SUBMITTED' && c.category !== 'APPROVED');
     if (blockedItem) {
       assert.strictEqual(blockedItem.category, 'BLOCKED_BY_PREREQUISITES');
       assert.strictEqual(blockedItem.readiness.can_submit, false);
@@ -112,9 +114,16 @@ describe('P1.11 — Project Submission Centre Integration Tests', () => {
     });
     const data = (await res.json()) as any;
 
-    const inPrepItem = data.clearances.find(
-      (c: any) => c.application_id && c.document_checklist.missing_mandatory.length > 0
-    );
+    const inPrepItem =
+      data.clearances.find(
+        (c: any) =>
+          c.application_id &&
+          c.can_submit_prerequisites &&
+          c.document_checklist.missing_mandatory.length > 0
+      ) ||
+      data.clearances.find(
+        (c: any) => c.application_id && c.document_checklist.missing_mandatory.length > 0
+      );
 
     if (inPrepItem) {
       const submitRes = await fetch(
@@ -132,9 +141,9 @@ describe('P1.11 — Project Submission Centre Integration Tests', () => {
       assert.strictEqual(submitRes.status, 400);
       const errData = (await submitRes.json()) as any;
       assert.ok(
-        errData.error?.includes('readiness') || errData.error?.includes('missing') ||
-        errData.message?.includes('readiness') || errData.message?.includes('missing'),
-        'Must block submission due to readiness/missing documents'
+        errData.error?.includes('readiness') || errData.error?.includes('missing') || errData.error?.includes('prerequisite') ||
+        errData.message?.includes('readiness') || errData.message?.includes('missing') || errData.message?.includes('prerequisite'),
+        'Must block submission due to readiness/missing documents or prerequisites'
       );
     }
   });

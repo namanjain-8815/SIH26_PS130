@@ -28,7 +28,8 @@ import {
   Zap,
 } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
-import type { SubmissionCentreItem } from '@/types/api';
+import type { SubmissionCentreItem, ParallelOrchestrationResult } from '@/types/api';
+import { ParallelOrchestrationModal } from '@/components/orchestration/ParallelOrchestrationModal';
 
 type CategoryFilter = 'ALL' | 'READY_TO_SUBMIT' | 'BLOCKED_BY_PREREQUISITES' | 'IN_PREPARATION' | 'SUBMITTED' | 'APPROVED';
 
@@ -41,6 +42,7 @@ export default function ProjectSubmissionCentrePage({ params }: { params: { id: 
   const [selectedForSubmit, setSelectedForSubmit] = useState<SubmissionCentreItem | null>(null);
   const [submissionNotes, setSubmissionNotes] = useState('');
   const [declarationConfirmed, setDeclarationConfirmed] = useState(false);
+  const [orchestrationResult, setOrchestrationResult] = useState<ParallelOrchestrationResult | null>(null);
   const [submissionSuccess, setSubmissionSuccess] = useState<{
     applicationNumber: string;
     approvalName: string;
@@ -63,9 +65,11 @@ export default function ProjectSubmissionCentrePage({ params }: { params: { id: 
   // Start eligible applications mutation
   const startEligible = useMutation({
     mutationFn: () => projectsApi.startEligibleApplications(projectId),
-    onSuccess: () => {
+    onSuccess: (res) => {
+      setOrchestrationResult(res);
       qc.invalidateQueries({ queryKey: ['submission-centre', projectId] });
       qc.invalidateQueries({ queryKey: ['control-centre', projectId] });
+      qc.invalidateQueries({ queryKey: ['project-approvals'] });
     },
   });
 
@@ -850,6 +854,14 @@ export default function ProjectSubmissionCentrePage({ params }: { params: { id: 
           </div>
         </div>
       )}
+
+      {/* Parallel Orchestration Feedback Modal */}
+      <ParallelOrchestrationModal
+        isOpen={!!orchestrationResult}
+        onClose={() => setOrchestrationResult(null)}
+        result={orchestrationResult}
+        projectName={sc?.project.name}
+      />
     </div>
   );
 }

@@ -63,6 +63,9 @@ export const projectsApi = {
   get: (id: string) => api.get<Project>(`/projects/${id}`),
   create: (body: Partial<Project> & { entity_name?: string; entity_type?: string }) => api.post<Project>('/projects', body),
   update: (id: string, body: Partial<Project>) => api.patch<Project>(`/projects/${id}`, body),
+  getProfile: (id: string) => api.get<import('@/types/api').ProjectProfileData>(`/projects/${id}/profile`),
+  updateProfile: (id: string, body: any) =>
+    api.patch<import('@/types/api').ProjectProfileData>(`/projects/${id}/profile`, body),
   runRegulatoryAnalysis: (id: string) => api.post<RegulatoryAnalysisResult>(`/projects/${id}/regulatory-analysis`),
   getControlCentre: (id: string) => api.get<ControlCentrePayload>(`/projects/${id}/control-centre`),
   getDependencyGraph: (id: string) => api.get<DependencyGraphPayload>(`/projects/${id}/dependency-graph`),
@@ -76,42 +79,41 @@ export const projectsApi = {
   saveAttributes: (id: string, attributes: Record<string, string>) =>
     api.post(`/projects/${id}/attributes`, attributes),
   startEligibleApplications: (id: string) =>
-    api.post<{
-      started: Array<{
-        project_approval_id: string;
-        approval_name: string;
-        authority: string;
-        application_id: string;
-        application_number: string;
-        status: string;
-      }>;
-      already_active: Array<{
-        project_approval_id: string;
-        approval_name: string;
-        application_id: string;
-        application_number: string;
-        status: string;
-      }>;
-      blocked_by_prerequisites: Array<{
-        project_approval_id: string;
-        approval_name: string;
-        missing_prerequisites: string[];
-      }>;
-      summary: {
-        started_count: number;
-        already_active_count: number;
-        blocked_count: number;
-      };
-    }>(`/projects/${id}/start-eligible-applications`),
+    api.post<import('@/types/api').ParallelOrchestrationResult>(`/projects/${id}/start-eligible-applications`),
   getSubmissionCentre: (id: string) => api.get<ProjectSubmissionCentreData>(`/projects/${id}/submission-centre`),
   submitApplication: (projectId: string, applicationId: string, notes?: string) =>
     api.post<SubmitApplicationResponse>(`/projects/${projectId}/submit-application/${applicationId}`, { notes }),
+  getDocumentConsistency: (projectId: string) =>
+    api.get<import('@/types/api').CrossDocumentConsistencyResult>(`/projects/${projectId}/document-consistency`),
+  getDocumentChecklist: (projectId: string) =>
+    api.get<import('@/types/api').ProjectDocumentGuidanceResponse>(`/projects/${projectId}/document-checklist`),
+  getApprovalTracker: (projectId: string) =>
+    api.get<import('@/types/api').ProjectApprovalTrackerResponse>(`/projects/${projectId}/approval-tracker`),
 };
 
 // Approval Types
 export const approvalTypesApi = {
   list: () => api.get<ApprovalType[]>('/approval-types'),
   get: (id: string) => api.get<ApprovalType>(`/approval-types/${id}`),
+  checkApplicability: (id: string, project_id: string) =>
+    api.post<{
+      approval_type_id: string;
+      approval_name: string;
+      authority: string;
+      project_id: string;
+      project_name: string;
+      applicable: boolean;
+      reason: string;
+      matched_rules: string[];
+      status_in_project: string | null;
+      application_id: string | null;
+      application_status: string | null;
+      requires_inspection: boolean;
+      default_sla_days: number;
+      renewal_period_days: number | null;
+      document_requirements: any[];
+      prerequisites: any[];
+    }>(`/approval-types/${id}/check-applicability`, { project_id }),
 };
 
 // Project Approvals
@@ -138,6 +140,16 @@ export const applicationsApi = {
     api.post<{ id: string; application_number: string }>('/applications', { project_approval_id, department_id }),
   getScrutinyPriority: (id: string) =>
     api.get<import('@/types/api').ScrutinyPriorityResult>(`/applications/${id}/scrutiny-priority`),
+  getForm: (id: string) =>
+    api.get<import('@/types/api').ApplicationFormData>(`/applications/${id}/form`),
+  saveForm: (id: string, payload: { department_values: Record<string, any>; notes?: string }) =>
+    api.patch<import('@/types/api').ApplicationFormData>(`/applications/${id}/form`, payload),
+  submitForm: (id: string, payload: { department_values?: Record<string, any>; notes?: string }) =>
+    api.post<{ success: boolean; application: any; message: string }>(`/applications/${id}/form/submit`, payload),
+  getDocumentConsistency: (id: string) =>
+    api.get<import('@/types/api').CrossDocumentConsistencyResult>(`/applications/${id}/document-consistency`),
+  getDocumentChecklist: (id: string) =>
+    api.get<import('@/types/api').ApplicationDocumentGuidanceResponse>(`/applications/${id}/document-checklist`),
 };
 
 // Queries
@@ -171,6 +183,37 @@ export const inspectionsApi = {
   update: (id: string, data: object) => api.patch(`/inspections/${id}`, data),
   recordFinding: (inspectionId: string, data: object) => api.post(`/inspections/${inspectionId}/findings`, data),
   updateFinding: (findingId: string, data: object) => api.patch(`/inspections/findings/${findingId}`, data),
+  listJointPlans: (params?: { project_id?: string; district?: string; status?: string; date_from?: string; date_to?: string }) => {
+    const qs = new URLSearchParams();
+    if (params?.project_id) qs.set('project_id', params.project_id);
+    if (params?.district) qs.set('district', params.district);
+    if (params?.status) qs.set('status', params.status);
+    if (params?.date_from) qs.set('date_from', params.date_from);
+    if (params?.date_to) qs.set('date_to', params.date_to);
+    const query = qs.toString() ? `?${qs.toString()}` : '';
+    return api.get<import('@/types/api').JointInspectionPlan[]>(`/inspections/joint-plans${query}`);
+  },
+  getProjectJoint: (projectId: string) =>
+    api.get<import('@/types/api').ProjectJointInspectionsResponse>(`/projects/${projectId}/joint-inspections`),
+  scheduleJoint: (data: {
+    project_id: string;
+    scheduled_date: string;
+    location?: string;
+    purpose?: string;
+    departments: Array<{ application_id: string; department_id: string; inspector_id?: string }>;
+  }) => api.post<{ message: string; scheduled_date: string; location: string; inspections: any[] }>('/inspections/joint-schedule', data),
+  rescheduleJoint: (data: {
+    project_id: string;
+    inspection_ids: string[];
+    new_date: string;
+    location?: string;
+    reason?: string;
+  }) => api.post<{ message: string; rescheduled_count: number; new_date: string }>('/inspections/joint-reschedule', data),
+  confirmJointReadiness: (data: {
+    project_id: string;
+    inspection_ids: string[];
+    notes?: string;
+  }) => api.post<{ message: string; confirmed_count: number }>('/inspections/joint-readiness', data),
 };
 
 // Documents
@@ -199,11 +242,17 @@ export const notificationsApi = {
   markAllRead: () => api.patch('/notifications/mark-all-read', {}),
 };
 
-// Compliance
+// Compliance & Statutory Renewals
 export const complianceApi = {
   list: (projectId: string) => api.get<import('@/types/api').ComplianceItem[]>(`/projects/${projectId}/compliance`),
   complete: (id: string) => api.patch(`/compliance/${id}/complete`, {}),
   remind: (projectId: string) => api.post<{ success: boolean; reminders_sent: number }>(`/projects/${projectId}/compliance/remind`, {}),
+  getWorkspace: (projectId: string) =>
+    api.get<import('@/types/api').RenewalsWorkspaceResponse>(`/projects/${projectId}/renewals-workspace`),
+  getDetail: (complianceId: string) =>
+    api.get<import('@/types/api').RenewalDetailResponse>(`/compliance/${complianceId}/detail`),
+  prepareRenewal: (complianceId: string) =>
+    api.post<import('@/types/api').PrepareRenewalResponse>(`/compliance/${complianceId}/prepare-renewal`, {}),
 };
 
 // Incentives
@@ -376,5 +425,37 @@ export const formsApi = {
   downloadUrl: (id: string) => `/api/prescribed-forms/${id}/download`,
   getForApprovalType: (approvalTypeId: string) =>
     api.get<import('@/types/api').PrescribedForm | null>(`/approval-types/${approvalTypeId}/prescribed-form`),
+};
+
+// Contextual Guidance Assistant (P1.12)
+export const guidanceApi = {
+  getContextual: (params?: {
+    page?: string;
+    project_id?: string;
+    application_id?: string;
+    approval_type_id?: string;
+    query_text?: string;
+  }) => {
+    const qs = new URLSearchParams();
+    if (params?.page) qs.set('page', params.page);
+    if (params?.project_id) qs.set('project_id', params.project_id);
+    if (params?.application_id) qs.set('application_id', params.application_id);
+    if (params?.approval_type_id) qs.set('approval_type_id', params.approval_type_id);
+    if (params?.query_text) qs.set('query_text', params.query_text);
+    const queryString = qs.toString();
+    return api.get<import('@/types/api').ContextualGuidancePayload>(
+      `/guidance/contextual${queryString ? `?${queryString}` : ''}`
+    );
+  },
+};
+
+// DigiLocker Verification — Prototype Simulation (P1.X)
+export const digilockerApi = {
+  getStatus: (projectId: string) =>
+    api.get<import('@/types/api').DigiLockerSimulationResult>(`/projects/${projectId}/digilocker/status`),
+  simulate: (projectId: string) =>
+    api.post<import('@/types/api').DigiLockerSimulationResult>(`/projects/${projectId}/digilocker/simulate`, {}),
+  reset: (projectId: string) =>
+    api.post<import('@/types/api').DigiLockerSimulationResult>(`/projects/${projectId}/digilocker/reset`, {}),
 };
 
