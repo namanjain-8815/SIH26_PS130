@@ -6,7 +6,10 @@ const router = Router();
 
 router.post('/login', async (req, res, next) => {
   try {
-    const { email, password } = req.body as { email: string; password: string };
+    const { email, password } = (req.body || {}) as { email?: string; password?: string };
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Email and password are required' });
+    }
     res.json(await authService.login(email, password));
   } catch (err) {
     next(err);

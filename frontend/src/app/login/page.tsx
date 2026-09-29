@@ -25,7 +25,6 @@ import {
   EyeOff,
   UserCheck,
 } from 'lucide-react';
-import { SiteTourGuide } from '@/components/ui/SiteTourGuide';
 
 const QUICK_DEMO_ACCOUNTS = [
   {
@@ -591,8 +590,6 @@ export default function LoginPage() {
         </div>
       )}
 
-      {/* Floating Interactive Tour Trigger */}
-      <SiteTourGuide />
     </div>
   );
 }

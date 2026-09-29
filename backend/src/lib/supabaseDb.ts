@@ -538,6 +538,10 @@ export class ModelClient<T = any> {
     include?: Record<string, any>;
     select?: any;
   }): Promise<T | null> {
+    if (!args.where || Object.keys(args.where).length === 0) return null;
+    const hasValidKey = Object.values(args.where).some((v) => v !== undefined && v !== 'undefined');
+    if (!hasValidKey) return null;
+
     const results = await this.findMany({
       where: args.where,
       include: args.include,

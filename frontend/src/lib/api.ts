@@ -42,7 +42,15 @@ export async function apiFetch<T>(path: string, options: RequestInit = {}): Prom
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body.error ?? `Request failed: ${res.status}`);
+    let msg = body.error || body.message;
+    if (!msg) {
+      if (res.status === 500) {
+        msg = 'Backend service error (500). Please ensure the backend server is running on port 4000.';
+      } else {
+        msg = `Request failed: ${res.status}`;
+      }
+    }
+    throw new Error(msg);
   }
 
   if (res.status === 204) return undefined as T;

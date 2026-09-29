@@ -28,11 +28,17 @@ export interface RegisterApplicantInput {
 }
 
 export async function login(email: string, password: string): Promise<LoginResult> {
+  if (!email || !password || typeof email !== 'string' || typeof password !== 'string') {
+    throw new BadRequestError('Email and password are required');
+  }
+
+  const normalizedEmail = email.toLowerCase().trim();
   const user = await prisma.user.findUnique({
-    where: { email },
+    where: { email: normalizedEmail },
     include: { department: true, organization: true },
   });
   if (!user) throw new UnauthorizedError('Invalid credentials');
+  if (!user.password_hash) throw new UnauthorizedError('Invalid credentials');
 
   const valid = await bcrypt.compare(password, user.password_hash);
   if (!valid) throw new UnauthorizedError('Invalid credentials');
