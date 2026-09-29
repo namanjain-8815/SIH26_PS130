@@ -6,4 +6,7 @@ export interface StoredFile {
 export interface StorageAdapter {
   save(originalName: string, buffer: Buffer): Promise<StoredFile>;
   delete(url: string): Promise<void>;
+  read(url: string): Promise<Buffer | null>;
+  exists?(url: string): Promise<boolean>;
 }
+

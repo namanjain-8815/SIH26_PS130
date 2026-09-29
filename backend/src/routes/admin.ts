@@ -3,6 +3,8 @@ import { requireAuth } from '../middleware/auth';
 import { requireRole } from '../middleware/roleGuard';
 import { prisma } from '../lib/prisma';
 import * as auditService from '../services/auditService';
+import bcrypt from 'bcrypt';
+
 
 const router = Router();
 router.use(requireAuth, requireRole('ADMIN'));
@@ -113,4 +115,64 @@ router.get('/audit-log', async (req, res, next) => {
   }
 });
 
+router.get('/departments', async (_req, res, next) => {
+  try {
+    res.json(await prisma.department.findMany());
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/users', async (_req, res, next) => {
+  try {
+    const users = await prisma.user.findMany({
+      include: { department: true, organization: true },
+      orderBy: { created_at: 'desc' },
+    });
+    res.json(users.map(({ password_hash: _pw, ...u }) => u));
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/users', async (req, res, next) => {
+  try {
+    const { name, email, password, role, department_id } = req.body;
+    if (!name || !email || !password || !role) {
+      return res.status(400).json({ error: 'Name, email, password, and role are required.' });
+    }
+    if (['OFFICER', 'INSPECTOR'].includes(role) && !department_id) {
+      return res.status(400).json({ error: 'Department is mandatory for department-bound officers.' });
+    }
+    const normalizedEmail = email.toLowerCase().trim();
+    const existing = await prisma.user.findUnique({ where: { email: normalizedEmail } });
+    if (existing) {
+      return res.status(400).json({ error: 'An account with this email address already exists.' });
+    }
+    const password_hash = await bcrypt.hash(password, 10);
+    const user = await prisma.user.create({
+      data: {
+        name: name.trim(),
+        email: normalizedEmail,
+        password_hash,
+        role,
+        department_id: department_id || null,
+      },
+      include: { department: true },
+    });
+    await auditService.recordAudit({
+      actor_id: req.user!.id,
+      action: 'CREATE_OFFICER_ACCOUNT',
+      entity_type: 'User',
+      entity_id: user.id,
+      after_data: { name, email: normalizedEmail, role, department_id },
+    });
+    const { password_hash: _pw, ...safeUser } = user;
+    res.status(201).json(safeUser);
+  } catch (err) {
+    next(err);
+  }
+});
+
 export default router;
+

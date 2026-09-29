@@ -13,6 +13,14 @@ router.post('/login', async (req, res, next) => {
   }
 });
 
+router.post('/register', async (req, res, next) => {
+  try {
+    res.status(201).json(await authService.registerApplicant(req.body));
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.get('/me', requireAuth, async (req, res, next) => {
   try {
     res.json(await authService.getCurrentUser(req.user!.id));

@@ -11,6 +11,7 @@ import { DocumentPreValidationCard } from '@/components/documents/DocumentPreVal
 import { CrossDocumentConsistencyCard } from '@/components/documents/CrossDocumentConsistencyCard';
 import { ClearanceDocumentGuidanceView } from '@/components/documents/ClearanceDocumentGuidanceView';
 import { DigiLockerVerificationCard } from '@/components/documents/DigiLockerVerificationCard';
+import { DocumentDetailCentreView } from '@/components/documents/DocumentDetailCentreView';
 import {
   FileText,
   Upload,
@@ -24,13 +25,18 @@ import {
   Layers,
   ShieldCheck,
   X,
+  Trash2,
+  Sparkles,
+  Database,
+  ExternalLink,
+  Download,
 } from 'lucide-react';
 
 const DEMO_PROJECT_ID = 'proj-abc-foods-001';
 
 export default function DocumentsPage() {
   const qc = useQueryClient();
-  const [viewMode, setViewMode] = useState<'vault' | 'guidance'>('vault');
+  const [viewMode, setViewMode] = useState<'vault' | 'detail-centre' | 'guidance'>('vault');
   const [showMissing, setShowMissing] = useState(false);
   const [showConsistency, setShowConsistency] = useState(false);
 
@@ -45,6 +51,15 @@ export default function DocumentsPage() {
   const [replaceExpiryDate, setReplaceExpiryDate] = useState('');
 
   const [viewDocDetailId, setViewDocDetailId] = useState<string | null>(null);
+  const [showInlinePdf, setShowInlinePdf] = useState(false);
+
+  // Safe Deletion Modal (B0.4)
+  const [deleteDocModal, setDeleteDocModal] = useState<{ id: string; docType: string; fileName: string } | null>(null);
+  const [deleteError, setDeleteError] = useState<string>('');
+
+  // Re-extraction State
+  const [reExtractingId, setReExtractingId] = useState<string | null>(null);
+  const [actionToast, setActionToast] = useState<string | null>(null);
 
   // Pre-validation state
   const [uploadValidation, setUploadValidation] = useState<DocumentPreValidationResult | null>(null);
@@ -123,6 +138,12 @@ export default function DocumentsPage() {
     enabled: !!viewDocDetailId,
   });
 
+  const { data: docExtraction } = useQuery({
+    queryKey: ['document-extraction', viewDocDetailId],
+    queryFn: () => documentsApi.getExtractedFields(viewDocDetailId!),
+    enabled: !!viewDocDetailId,
+  });
+
   const {
     data: consistencyData,
     isLoading: isConsistencyLoading,
@@ -158,10 +179,13 @@ export default function DocumentsPage() {
       qc.invalidateQueries({ queryKey: ['missing-docs', DEMO_PROJECT_ID] });
       qc.invalidateQueries({ queryKey: ['project-document-consistency', DEMO_PROJECT_ID] });
       qc.invalidateQueries({ queryKey: ['project-document-checklist', DEMO_PROJECT_ID] });
+      qc.invalidateQueries({ queryKey: ['document-detail-centre', DEMO_PROJECT_ID] });
       setShowUploadModal(false);
       setUploadFile(null);
       setUploadDocType('');
       setUploadExpiryDate('');
+      setActionToast('Document uploaded and structured fields extracted.');
+      setTimeout(() => setActionToast(null), 5000);
     },
   });
 
@@ -179,9 +203,49 @@ export default function DocumentsPage() {
       qc.invalidateQueries({ queryKey: ['documents', DEMO_PROJECT_ID] });
       qc.invalidateQueries({ queryKey: ['project-document-consistency', DEMO_PROJECT_ID] });
       qc.invalidateQueries({ queryKey: ['project-document-checklist', DEMO_PROJECT_ID] });
+      qc.invalidateQueries({ queryKey: ['document-detail-centre', DEMO_PROJECT_ID] });
       setReplaceDocId(null);
       setReplaceFile(null);
       setReplaceExpiryDate('');
+      setActionToast('Document replaced and re-extracted successfully.');
+      setTimeout(() => setActionToast(null), 5000);
+    },
+  });
+
+  // Re-extract mutation
+  const reExtractDoc = useMutation({
+    mutationFn: (docId: string) => documentsApi.reExtract(docId),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ['documents', DEMO_PROJECT_ID] });
+      qc.invalidateQueries({ queryKey: ['project-document-consistency', DEMO_PROJECT_ID] });
+      qc.invalidateQueries({ queryKey: ['document-detail-centre', DEMO_PROJECT_ID] });
+      setReExtractingId(null);
+      const count = data?.extraction?.fields ? Object.keys(data.extraction.fields).length : 0;
+      setActionToast(`PDF extraction complete: ${count} structured fields detected.`);
+      setTimeout(() => setActionToast(null), 5000);
+    },
+    onError: (err: any) => {
+      setReExtractingId(null);
+      setActionToast(`Re-extraction failed: ${err.message}`);
+      setTimeout(() => setActionToast(null), 5000);
+    },
+  });
+
+  // Safe delete mutation (B0.4)
+  const deleteDoc = useMutation({
+    mutationFn: (docId: string) => documentsApi.delete(docId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['documents', DEMO_PROJECT_ID] });
+      qc.invalidateQueries({ queryKey: ['missing-docs', DEMO_PROJECT_ID] });
+      qc.invalidateQueries({ queryKey: ['project-document-consistency', DEMO_PROJECT_ID] });
+      qc.invalidateQueries({ queryKey: ['document-detail-centre', DEMO_PROJECT_ID] });
+      setDeleteDocModal(null);
+      setDeleteError('');
+      setActionToast('Document safely deleted from vault.');
+      setTimeout(() => setActionToast(null), 5000);
+    },
+    onError: (err: any) => {
+      setDeleteError(err.message || 'Cannot delete document.');
     },
   });
 
@@ -196,13 +260,13 @@ export default function DocumentsPage() {
   };
 
   return (
-    <div className="p-6 space-y-5 animate-fade-in">
+    <div className="p-6 space-y-5 animate-fade-in max-w-7xl mx-auto">
       {/* Sticky Action Header */}
-      <div className="sticky top-0 z-20 bg-surface/95 backdrop-blur-sm pb-3 pt-1 border-b border-gray-100 flex items-center justify-between">
+      <div className="sticky top-0 z-20 bg-surface/95 backdrop-blur-sm pb-3 pt-1 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-lg font-bold text-gray-900">Document Vault</h1>
+          <h1 className="text-lg font-bold text-gray-900">Document Vault & Extraction Centre</h1>
           <p className="text-xs text-gray-500 mt-0.5">
-            All industrial undertaking documents — uploaded once, reused across multiple permission applications
+            Single repository for all industrial undertaking documents — uploaded once, verified, and reused across applications
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -213,7 +277,7 @@ export default function DocumentsPage() {
             }`}
           >
             <Layers className="w-3.5 h-3.5 text-blue-600" />
-            {showConsistency ? 'Hide Consistency Audit' : 'Consistency Audit'}
+            {showConsistency ? 'Hide Consistency' : 'Consistency Audit'}
           </button>
           <button
             onClick={() => setShowMissing(!showMissing)}
@@ -234,14 +298,26 @@ export default function DocumentsPage() {
         </div>
       </div>
 
-      {/* DigiLocker Verification — Prototype Simulation (P1.X) */}
+      {actionToast && (
+        <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-800 flex items-center justify-between animate-fade-in">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-blue-600 flex-shrink-0" />
+            <span>{actionToast}</span>
+          </div>
+          <button onClick={() => setActionToast(null)} className="text-blue-500 hover:text-blue-800">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
+      {/* DigiLocker Verification — Prototype Simulation */}
       <DigiLockerVerificationCard projectId={DEMO_PROJECT_ID} />
 
-      {/* Primary Vault View Switcher (P0.6) */}
-      <div className="flex items-center gap-2 border-b border-gray-200 pb-2">
+      {/* Primary Vault View Switcher (B0.2) */}
+      <div className="flex items-center gap-2 border-b border-gray-200 pb-2 overflow-x-auto">
         <button
           onClick={() => setViewMode('vault')}
-          className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${
+          className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 flex-shrink-0 ${
             viewMode === 'vault'
               ? 'bg-blue-600 text-white shadow-sm'
               : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -250,9 +326,22 @@ export default function DocumentsPage() {
           <FileText className="w-3.5 h-3.5" />
           Uploaded Vault Documents ({documents.length})
         </button>
+
+        <button
+          onClick={() => setViewMode('detail-centre')}
+          className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 flex-shrink-0 ${
+            viewMode === 'detail-centre'
+              ? 'bg-blue-600 text-white shadow-sm'
+              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+          }`}
+        >
+          <Database className="w-3.5 h-3.5 text-indigo-400" />
+          Document Detail Centre & Reuse
+        </button>
+
         <button
           onClick={() => setViewMode('guidance')}
-          className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${
+          className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 flex-shrink-0 ${
             viewMode === 'guidance'
               ? 'bg-blue-600 text-white shadow-sm'
               : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -263,7 +352,9 @@ export default function DocumentsPage() {
         </button>
       </div>
 
-      {viewMode === 'guidance' ? (
+      {viewMode === 'detail-centre' ? (
+        <DocumentDetailCentreView projectId={DEMO_PROJECT_ID} />
+      ) : viewMode === 'guidance' ? (
         <ClearanceDocumentGuidanceView
           data={projectChecklist}
           isLoading={isProjectChecklistLoading}
@@ -276,139 +367,137 @@ export default function DocumentsPage() {
       ) : (
         <>
           {/* Stats row */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-        {[
-          { label: 'Total', val: stats.total, color: 'text-gray-700 bg-gray-50', border: 'border-gray-200' },
-          { label: 'Verified', val: stats.verified, color: 'text-green-700 bg-green-50', border: 'border-green-200' },
-          { label: 'Pending', val: stats.pending, color: 'text-amber-700 bg-amber-50', border: 'border-amber-200' },
-          { label: 'Expiring Soon', val: stats.expiring, color: 'text-orange-700 bg-orange-50', border: 'border-orange-200' },
-          { label: 'Expired', val: stats.expired, color: 'text-red-700 bg-red-50', border: 'border-red-200' },
-        ].map(({ label, val, color, border }) => (
-          <div key={label} className={`card p-3 border ${border} text-center`}>
-            <p className={`text-2xl font-bold ${color.split(' ')[0]}`}>{val}</p>
-            <p className="text-xs text-gray-500 mt-0.5">{label}</p>
-          </div>
-        ))}
-      </div>
-
-      {/* Cross-Document Consistency Audit Panel (P0.5) */}
-      {showConsistency && (
-        <div className="space-y-2">
-          <CrossDocumentConsistencyCard
-            result={consistencyData}
-            isLoading={isConsistencyLoading}
-            onRecheck={() => refetchConsistency()}
-            title="Project Document Vault — Cross-Document Consistency Audit"
-          />
-        </div>
-      )}
-
-      {/* Missing documents panel */}
-      {showMissing && missing && (
-        <div className="card p-4 border-l-4 border-amber-400 bg-amber-50 space-y-2">
-          <div className="flex items-center gap-2 mb-1">
-            <AlertTriangle className="w-4 h-4 text-amber-600" />
-            <p className="text-sm font-semibold text-amber-800">
-              {(missing as Array<{ document_type: string; mandatory: boolean; for_approvals: string[] }>).length} documents missing from vault
-            </p>
-          </div>
-          {(missing as Array<{ document_type: string; mandatory: boolean; for_approvals: string[] }>).map((m) => (
-            <div key={m.document_type} className="flex items-start gap-3 bg-white rounded-lg p-3">
-              <FilePlus className="w-4 h-4 text-amber-500 mt-0.5 flex-shrink-0" />
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-gray-900">{m.document_type}</p>
-                <p className="text-xs text-gray-400 mt-0.5">Required by: {m.for_approvals.join(', ')}</p>
-              </div>
-              {m.mandatory && (
-                <span className="text-[10px] font-medium bg-red-100 text-red-700 px-1.5 py-0.5 rounded flex-shrink-0">
-                  Mandatory
-                </span>
-              )}
-              <button
-                onClick={() => {
-                  setUploadDocType(m.document_type);
-                  setShowUploadModal(true);
-                }}
-                className="btn-primary text-xs py-1 px-2.5"
-              >
-                Upload
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Documents table */}
-      <div className="card overflow-hidden">
-        {isLoading && (
-          <div className="p-4 space-y-3">
-            {[...Array(4)].map((_, i) => (
-              <div key={i} className="flex items-center gap-3">
-                <Skeleton className="w-8 h-8 rounded-lg" />
-                <div className="flex-1 space-y-1.5">
-                  <Skeleton className="h-3 w-2/3" />
-                  <Skeleton className="h-2.5 w-1/3" />
-                </div>
-                <Skeleton className="h-6 w-16 rounded-full" />
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+            {[
+              { label: 'Total', val: stats.total, color: 'text-gray-700 bg-gray-50', border: 'border-gray-200' },
+              { label: 'Verified', val: stats.verified, color: 'text-green-700 bg-green-50', border: 'border-green-200' },
+              { label: 'Pending', val: stats.pending, color: 'text-amber-700 bg-amber-50', border: 'border-amber-200' },
+              { label: 'Expiring Soon', val: stats.expiring, color: 'text-orange-700 bg-orange-50', border: 'border-orange-200' },
+              { label: 'Expired', val: stats.expired, color: 'text-red-700 bg-red-50', border: 'border-red-200' },
+            ].map(({ label, val, color, border }) => (
+              <div key={label} className={`card p-3 border ${border} text-center`}>
+                <p className={`text-2xl font-bold ${color.split(' ')[0]}`}>{val}</p>
+                <p className="text-xs text-gray-500 mt-0.5">{label}</p>
               </div>
             ))}
           </div>
-        )}
-        {error && <ErrorState message={(error as Error).message} onRetry={() => refetch()} />}
-        {!isLoading && documents.length === 0 && (
-          <EmptyState
-            icon={<FileText className="w-10 h-10" />}
-            title="No documents uploaded yet"
-            description="Upload your business documents here — PAN, incorporation certificate, land documents, etc."
-            action={
-              <button
-                onClick={() => {
-                  setUploadDocType('');
-                  setShowUploadModal(true);
-                }}
-                className="btn-primary text-xs py-1.5"
-              >
-                <Upload className="w-3.5 h-3.5" /> Upload your first document
-              </button>
-            }
-          />
-        )}
-        {documents.length > 0 && (
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-gray-100">
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                  Document
-                </th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                  Status
-                </th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                  Expiry
-                </th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                  Reused by
-                </th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                  Uploaded
-                </th>
-                <th className="px-4 py-3 text-right" />
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-50">
-              {documents.map((doc) => (
-                <DocumentRow
-                  key={doc.id}
-                  doc={doc}
-                  onView={() => setViewDocDetailId(doc.id)}
-                  onReplace={() => setReplaceDocId(doc.id)}
-                />
+
+          {/* Cross-Document Consistency Audit Panel */}
+          {showConsistency && (
+            <div className="space-y-2">
+              <CrossDocumentConsistencyCard
+                result={consistencyData}
+                isLoading={isConsistencyLoading}
+                onRecheck={() => refetchConsistency()}
+                title="Project Document Vault — Cross-Document Consistency Audit"
+              />
+            </div>
+          )}
+
+          {/* Missing documents panel */}
+          {showMissing && missing && (
+            <div className="card p-4 border-l-4 border-amber-400 bg-amber-50 space-y-2">
+              <div className="flex items-center gap-2 mb-1">
+                <AlertTriangle className="w-4 h-4 text-amber-600" />
+                <p className="text-sm font-semibold text-amber-800">
+                  {(missing as Array<{ document_type: string; mandatory: boolean; for_approvals: string[] }>).length} documents missing from vault
+                </p>
+              </div>
+              {(missing as Array<{ document_type: string; mandatory: boolean; for_approvals: string[] }>).map((m) => (
+                <div key={m.document_type} className="flex items-start gap-3 bg-white rounded-lg p-3">
+                  <FilePlus className="w-4 h-4 text-amber-500 mt-0.5 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-900">{m.document_type}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">Required by: {m.for_approvals.join(', ')}</p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setUploadDocType(m.document_type);
+                      setShowUploadModal(true);
+                    }}
+                    className="btn-primary text-xs py-1 px-2.5"
+                  >
+                    Upload
+                  </button>
+                </div>
               ))}
-            </tbody>
-          </table>
-        )}
-      </div>
-      </>
+            </div>
+          )}
+
+          {/* Documents table */}
+          <div className="card overflow-hidden">
+            {isLoading && (
+              <div className="p-4 space-y-3">
+                {[...Array(4)].map((_, i) => (
+                  <div key={i} className="flex items-center gap-3">
+                    <Skeleton className="w-8 h-8 rounded-lg" />
+                    <div className="flex-1 space-y-1.5">
+                      <Skeleton className="h-3 w-2/3" />
+                      <Skeleton className="h-2.5 w-1/3" />
+                    </div>
+                    <Skeleton className="h-6 w-16 rounded-full" />
+                  </div>
+                ))}
+              </div>
+            )}
+            {error && <ErrorState message={(error as Error).message} onRetry={() => refetch()} />}
+            {!isLoading && documents.length === 0 && (
+              <EmptyState
+                icon={<FileText className="w-10 h-10" />}
+                title="No documents uploaded yet"
+                description="Upload your business documents here — PAN, incorporation certificate, land documents, etc."
+                action={
+                  <button
+                    onClick={() => {
+                      setUploadDocType('');
+                      setShowUploadModal(true);
+                    }}
+                    className="btn-primary text-xs py-1.5"
+                  >
+                    <Upload className="w-3.5 h-3.5" /> Upload your first document
+                  </button>
+                }
+              />
+            )}
+            {documents.length > 0 && (
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-gray-100 bg-gray-50/70 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                    <th className="text-left px-4 py-3">Document & File</th>
+                    <th className="text-left px-4 py-3">Status & Extraction</th>
+                    <th className="text-left px-4 py-3">Expiry</th>
+                    <th className="text-left px-4 py-3">Reused by</th>
+                    <th className="text-left px-4 py-3">Uploaded</th>
+                    <th className="px-4 py-3 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {documents.map((doc) => (
+                    <DocumentRow
+                      key={doc.id}
+                      doc={doc}
+                      onView={() => setViewDocDetailId(doc.id)}
+                      onReplace={() => setReplaceDocId(doc.id)}
+                      onReExtract={() => {
+                        setReExtractingId(doc.id);
+                        reExtractDoc.mutate(doc.id);
+                      }}
+                      onDelete={() => {
+                        setDeleteError('');
+                        setDeleteDocModal({
+                          id: doc.id,
+                          docType: doc.document_type,
+                          fileName: doc.file_name,
+                        });
+                      }}
+                      isReExtracting={reExtractingId === doc.id}
+                    />
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </>
       )}
 
       {/* MODAL: Upload Document */}
@@ -418,7 +507,7 @@ export default function DocumentsPage() {
             <div className="flex items-center justify-between pb-3 border-b border-gray-100">
               <div>
                 <h3 className="text-sm font-bold text-gray-900">Upload to Document Vault</h3>
-                <p className="text-xs text-gray-400">Statutory multi-tier pre-validation will be executed before attachment.</p>
+                <p className="text-xs text-gray-400">Statutory multi-tier pre-validation & field extraction will be executed.</p>
               </div>
               <button
                 onClick={() => {
@@ -448,9 +537,10 @@ export default function DocumentsPage() {
                 />
               </div>
               <div>
-                <label className="font-semibold text-gray-700">File (PDF, JPG, PNG)</label>
+                <label className="font-semibold text-gray-700">Select File (PDF, PNG, JPG)</label>
                 <input
                   type="file"
+                  accept=".pdf,.png,.jpg,.jpeg"
                   onChange={(e) => handleUploadFileSelected(e.target.files?.[0] || null)}
                   className="mt-1 block w-full text-xs text-gray-500 file:mr-4 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-primary-50 file:text-primary-700 hover:file:bg-primary-100"
                 />
@@ -488,7 +578,7 @@ export default function DocumentsPage() {
               </button>
               <button
                 onClick={() => {
-                  if (uploadDocType && uploadFile) {
+                  if (uploadFile && uploadDocType) {
                     uploadDoc.mutate({
                       docType: uploadDocType,
                       file: uploadFile,
@@ -497,15 +587,15 @@ export default function DocumentsPage() {
                   }
                 }}
                 disabled={
-                  !uploadDocType ||
                   !uploadFile ||
+                  !uploadDocType ||
                   uploadDoc.isPending ||
                   isUploadValidating ||
                   (uploadValidation !== null && !uploadValidation.accepted)
                 }
                 className="btn-primary text-xs py-1.5"
               >
-                {uploadDoc.isPending ? 'Uploading...' : 'Save to Vault'}
+                {uploadDoc.isPending ? 'Uploading & Extracting...' : 'Upload & Extract'}
               </button>
             </div>
           </div>
@@ -518,13 +608,8 @@ export default function DocumentsPage() {
           <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6 space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-gray-100">
               <div>
-                <h3 className="text-sm font-bold text-gray-900">Replace Document Version</h3>
-                <p className="text-xs text-gray-400">
-                  Target:{' '}
-                  <span className="font-semibold text-gray-700">
-                    {documents.find((d) => d.id === replaceDocId)?.document_type}
-                  </span>
-                </p>
+                <h3 className="text-sm font-bold text-gray-900">Upload Document Replacement</h3>
+                <p className="text-xs text-gray-400">Replaces the file and triggers automatic re-extraction</p>
               </div>
               <button
                 onClick={() => {
@@ -537,15 +622,12 @@ export default function DocumentsPage() {
                 ×
               </button>
             </div>
-            <p className="text-xs text-gray-500">
-              Replacing will create a new version of this document. It will automatically update in all applications that
-              reuse it and reset verification status to PENDING for re-screening.
-            </p>
             <div className="space-y-3 text-xs">
               <div>
-                <label className="font-semibold text-gray-700">New File</label>
+                <label className="font-semibold text-gray-700">Select New File (PDF, PNG, JPG)</label>
                 <input
                   type="file"
+                  accept=".pdf,.png,.jpg,.jpeg"
                   onChange={(e) => {
                     const doc = documents.find((d) => d.id === replaceDocId);
                     handleReplaceFileSelected(e.target.files?.[0] || null, doc?.document_type || 'Statutory Document');
@@ -609,44 +691,224 @@ export default function DocumentsPage() {
         </div>
       )}
 
-      {/* MODAL: Document Details & Reuse View */}
-      {viewDocDetailId && docDetail && (
-        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6 space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-gray-100">
-              <div>
-                <h3 className="text-sm font-bold text-gray-900">{docDetail.document_type}</h3>
-                <p className="text-xs text-gray-400 font-mono mt-0.5">{docDetail.file_name}</p>
+      {/* MODAL: Safe Deletion Confirmation (B0.4) */}
+      {deleteDocModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-4 animate-scale-in">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-red-100 text-red-600 flex items-center justify-center flex-shrink-0">
+                <Trash2 className="w-5 h-5" />
               </div>
-              <button onClick={() => setViewDocDetailId(null)} className="text-gray-400 hover:text-gray-600 text-lg">
-                ×
+              <div>
+                <h3 className="text-base font-bold text-gray-900">Delete Vault Document</h3>
+                <p className="text-xs text-gray-500">{deleteDocModal.docType}</p>
+              </div>
+            </div>
+
+            <div className="text-xs text-gray-600 space-y-2">
+              <p>
+                Are you sure you want to permanently delete <span className="font-semibold text-gray-900 font-mono">{deleteDocModal.fileName}</span>?
+              </p>
+              <p className="text-gray-500">
+                This action will delete the physical file from storage and erase any extracted fields.
+              </p>
+            </div>
+
+            {deleteError && (
+              <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-800 space-y-1">
+                <div className="flex items-center gap-1.5 font-bold">
+                  <AlertTriangle className="w-4 h-4 text-red-600 flex-shrink-0" />
+                  <span>Statutory Protection Notice</span>
+                </div>
+                <p className="text-[11px] leading-relaxed">{deleteError}</p>
+              </div>
+            )}
+
+            <div className="pt-3 border-t border-gray-100 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setDeleteDocModal(null);
+                  setDeleteError('');
+                }}
+                className="btn-secondary text-xs py-2 px-3"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={deleteDoc.isPending}
+                onClick={() => deleteDoc.mutate(deleteDocModal.id)}
+                className="px-3.5 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white font-semibold text-xs shadow-sm transition-colors"
+              >
+                {deleteDoc.isPending ? 'Deleting...' : 'Confirm Deletion'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
 
-            <div className="grid grid-cols-2 gap-3 text-xs p-3 bg-gray-50 rounded-lg">
-              <div>
-                <span className="text-gray-400">Status:</span> <StatusBadge status={docDetail.verification_status} size="sm" />
+      {/* MODAL: Document Details & Reuse View */}
+      {viewDocDetailId && docDetail && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full p-6 space-y-4 max-h-[92vh] overflow-y-auto animate-scale-in">
+            {/* Header */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-gray-100">
+              <div className="min-w-0">
+                <h3 className="text-base font-bold text-gray-900 truncate">{docDetail.document_type}</h3>
+                <p className="text-xs text-gray-500 font-mono mt-0.5 truncate">{docDetail.file_name}</p>
               </div>
-              <div>
-                <span className="text-gray-400">Expiry:</span>{' '}
-                <span className="font-semibold text-gray-700">{formatDate(docDetail.expiry_date)}</span>
-              </div>
-              <div>
-                <span className="text-gray-400">Version:</span>{' '}
-                <span className="font-mono font-semibold">v{(docDetail as any).version || 1}</span>
-              </div>
-              <div>
-                <span className="text-gray-400">Total Reuse:</span>{' '}
-                <span className="font-bold text-primary-600">{docDetail.reuse_count} applications</span>
+              <div className="flex items-center gap-2 flex-wrap">
+                {docDetail.is_file_available !== false ? (
+                  <>
+                    <a
+                      href={documentsApi.getFileUrl(docDetail.id)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="btn-primary text-xs py-1.5 px-3 flex items-center gap-1.5 shadow-xs"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                      View Uploaded PDF
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => setShowInlinePdf(!showInlinePdf)}
+                      className="btn-secondary text-xs py-1.5 px-3 flex items-center gap-1.5"
+                    >
+                      <Eye className="w-3.5 h-3.5 text-gray-500" />
+                      {showInlinePdf ? 'Hide Preview' : 'Preview Document'}
+                    </button>
+                    <a
+                      href={documentsApi.getFileUrl(docDetail.id)}
+                      download={docDetail.file_name}
+                      className="btn-secondary text-xs py-1.5 px-2.5 flex items-center gap-1"
+                      title="Download File"
+                    >
+                      <Download className="w-3.5 h-3.5 text-gray-600" />
+                    </a>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setReplaceDocId(docDetail.id);
+                      setViewDocDetailId(null);
+                    }}
+                    className="btn-primary text-xs py-1.5 px-3 flex items-center gap-1.5 shadow-xs"
+                  >
+                    <Upload className="w-3.5 h-3.5" />
+                    Upload / Replace Document
+                  </button>
+                )}
+                <button
+                  onClick={() => {
+                    setViewDocDetailId(null);
+                    setShowInlinePdf(false);
+                  }}
+                  className="p-1 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 ml-1"
+                >
+                  <X className="w-5 h-5" />
+                </button>
               </div>
             </div>
 
+            {/* Unavailable File Warning Banner */}
+            {docDetail.is_file_available === false && (
+              <div className="p-4 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 space-y-2 animate-fade-in">
+                <div className="flex items-center gap-2 font-bold text-sm text-amber-950">
+                  <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0" />
+                  <span>Physical Document File Unavailable</span>
+                </div>
+                <p className="text-xs text-amber-800 leading-relaxed">
+                  This document record exists in your project vault, but the physical PDF file is not present in storage.
+                  Please upload or replace the document file to enable previews, downloads, and structured re-extraction.
+                </p>
+                <div className="pt-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setReplaceDocId(docDetail.id);
+                      setViewDocDetailId(null);
+                    }}
+                    className="btn-primary text-xs py-1.5 px-3.5 flex items-center gap-1.5 shadow-xs"
+                  >
+                    <Upload className="w-3.5 h-3.5" />
+                    Upload Document File Now
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Inline PDF / File Viewer */}
+            {docDetail.is_file_available !== false && showInlinePdf && (
+              <div className="border border-gray-200 rounded-xl overflow-hidden bg-gray-900 shadow-inner animate-fade-in">
+                <div className="bg-gray-800 px-3 py-1.5 flex items-center justify-between text-xs text-gray-300 border-b border-gray-700">
+                  <span className="font-mono text-[11px] truncate">{docDetail.file_name}</span>
+                  <span className="text-[10px] text-gray-400">PDF & Document Exhibit Viewer</span>
+                </div>
+                <iframe
+                  src={documentsApi.getFileUrl(docDetail.id)}
+                  className="w-full h-96 bg-white"
+                  title={`Preview of ${docDetail.file_name}`}
+                />
+              </div>
+            )}
+
+            {/* Metadata Grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs p-3 bg-gray-50 rounded-xl border border-gray-100">
+              <div>
+                <span className="text-[11px] text-gray-400 font-medium">Status</span>
+                <div className="mt-0.5"><StatusBadge status={docDetail.verification_status} size="sm" /></div>
+              </div>
+              <div>
+                <span className="text-[11px] text-gray-400 font-medium">Expiry</span>
+                <p className="font-semibold text-gray-800 mt-0.5">{formatDate(docDetail.expiry_date)}</p>
+              </div>
+              <div>
+                <span className="text-[11px] text-gray-400 font-medium">Version</span>
+                <p className="font-mono font-semibold text-gray-800 mt-0.5">v{(docDetail as any).version || 1}</p>
+              </div>
+              <div>
+                <span className="text-[11px] text-gray-400 font-medium">Vault Total Reuse</span>
+                <p className="font-bold text-primary-600 mt-0.5">{docDetail.reuse_count} applications</p>
+              </div>
+            </div>
+
+            {/* Extracted Fields from this Exhibit */}
+            {docExtraction && docExtraction.fields && Object.keys(docExtraction.fields).length > 0 && (
+              <div className="space-y-2 p-3 bg-blue-50/40 rounded-xl border border-blue-100">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-bold text-gray-800 uppercase tracking-wide flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-blue-600" />
+                    Extracted Structured Attributes ({Object.keys(docExtraction.fields).length})
+                  </h4>
+                  <span className="text-[10px] text-blue-700 font-medium">Synced with Document Detail Centre</span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-40 overflow-y-auto">
+                  {Object.entries(docExtraction.fields).map(([k, f]: [string, any]) => (
+                    <div key={k} className="p-2 rounded-lg bg-white border border-gray-200/80 text-xs">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-gray-700 text-[11px]">{k}</span>
+                        <span className="text-[9px] font-mono font-bold text-emerald-700 bg-emerald-50 px-1 py-0.2 rounded border border-emerald-200">
+                          {f.status || 'PARSED'}
+                        </span>
+                      </div>
+                      <p className="font-mono font-bold text-gray-900 mt-0.5 text-xs truncate">
+                        {String(f.value)}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Applications Reusing This Document */}
             <div className="space-y-2">
               <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wide">Applications Reusing This Document</h4>
               {(docDetail as any).reused_by?.length === 0 ? (
                 <p className="text-xs text-gray-400 italic">Not currently attached to any active applications.</p>
               ) : (
-                <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                <div className="space-y-1.5 max-h-40 overflow-y-auto">
                   {(docDetail as any).reused_by?.map((app: any) => (
                     <div key={app.application_id} className="p-2.5 rounded-lg border border-gray-100 bg-white flex items-center justify-between text-xs">
                       <div>
@@ -662,8 +924,24 @@ export default function DocumentsPage() {
               )}
             </div>
 
-            <div className="pt-3 border-t border-gray-100 flex justify-end">
-              <button onClick={() => setViewDocDetailId(null)} className="btn-secondary text-xs py-1.5">
+            {/* Modal Footer */}
+            <div className="pt-3 border-t border-gray-100 flex items-center justify-between">
+              <a
+                href={documentsApi.getFileUrl(docDetail.id)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs text-primary-600 hover:text-primary-800 font-semibold flex items-center gap-1"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                Open PDF in New Window
+              </a>
+              <button
+                onClick={() => {
+                  setViewDocDetailId(null);
+                  setShowInlinePdf(false);
+                }}
+                className="btn-secondary text-xs py-1.5 px-4"
+              >
                 Close
               </button>
             </div>
@@ -678,10 +956,16 @@ function DocumentRow({
   doc,
   onView,
   onReplace,
+  onReExtract,
+  onDelete,
+  isReExtracting,
 }: {
   doc: DocumentItem;
   onView: () => void;
   onReplace: () => void;
+  onReExtract: () => void;
+  onDelete: () => void;
+  isReExtracting: boolean;
 }) {
   return (
     <tr className="hover:bg-gray-50 transition-colors group">
@@ -699,6 +983,24 @@ function DocumentRow({
       <td className="px-4 py-3">
         <div className="flex items-center gap-1.5 flex-wrap">
           <StatusBadge status={doc.verification_status} size="sm" />
+          {(doc as any).is_file_available === false && (
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-900 border border-amber-300" title="Physical file is unavailable in storage. Upload or replace document to enable PDF preview & re-extraction.">
+              <AlertTriangle className="w-3 h-3 text-amber-600" />
+              FILE UNAVAILABLE
+            </span>
+          )}
+          {(doc as any).extracted_field_count > 0 && (
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-blue-800 border border-blue-200" title="Structured attributes parsed from PDF">
+              <Sparkles className="w-3 h-3 text-blue-600" />
+              EXTRACTED ({(doc as any).extracted_field_count})
+            </span>
+          )}
+          {(doc as any).extraction_status === 'MANUAL_VERIFICATION_REQUIRED' && (
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-900 border border-amber-300" title="Scanned/unparsed PDF requires manual verification">
+              <AlertTriangle className="w-3 h-3 text-amber-600" />
+              MANUAL VERIFY
+            </span>
+          )}
           {['Company PAN Card', 'Land Ownership / Lease Agreement', 'Memorandum of Association (MoA)'].includes(doc.document_type) && doc.verification_status === 'VERIFIED' && (
             <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200" title="Retrieved & verified via DigiLocker simulation">
               <ShieldCheck className="w-3 h-3 text-emerald-600" />
@@ -735,8 +1037,23 @@ function DocumentRow({
           <button onClick={onView} className="btn-ghost p-1.5 rounded-lg text-gray-500 hover:text-gray-900" title="View Details & Reuse">
             <Eye className="w-4 h-4" />
           </button>
+          <button
+            onClick={onReExtract}
+            disabled={isReExtracting || (doc as any).is_file_available === false}
+            className={`btn-ghost p-1.5 rounded-lg ${(doc as any).is_file_available === false ? 'text-gray-300 cursor-not-allowed' : 'text-gray-500 hover:text-blue-600'}`}
+            title={(doc as any).is_file_available === false ? 'Physical file unavailable. Upload or replace document first.' : 'Re-extract Structured Fields'}
+          >
+            <Sparkles className={`w-4 h-4 ${isReExtracting ? 'animate-spin text-blue-600' : ''}`} />
+          </button>
           <button onClick={onReplace} className="btn-ghost p-1.5 rounded-lg text-gray-500 hover:text-primary-600" title="Upload Replacement">
             <RefreshCw className="w-4 h-4" />
+          </button>
+          <button
+            onClick={onDelete}
+            className="btn-ghost p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50"
+            title="Delete Document from Vault"
+          >
+            <Trash2 className="w-4 h-4" />
           </button>
         </div>
       </td>

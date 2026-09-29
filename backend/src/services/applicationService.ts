@@ -104,7 +104,7 @@ export async function getApplication(id: string) {
     .filter((dep: any) => dep.dependency_type === 'PREREQUISITE')
     .map((dep: any) => ({
       id: dep.prerequisite_approval_type_id,
-      status: paByTypeId.get(dep.prerequisite_approval_type_id)?.status ?? 'NOT_STARTED',
+      status: (paByTypeId.get(dep.prerequisite_approval_type_id) as any)?.status ?? 'NOT_STARTED',
     }));
 
   const distinctDepts = new Set<string>();
@@ -1442,9 +1442,9 @@ export async function getApplicationForm(applicationId: string): Promise<Applica
       mandatory: !!req.mandatory,
       condition: req.condition,
       attached: !!attached,
-      document_id: attached?.document?.id,
-      file_name: attached?.document?.file_name,
-      status: attached?.document?.status,
+      document_id: (attached as any)?.document?.id,
+      file_name: (attached as any)?.document?.file_name,
+      status: (attached as any)?.document?.verification_status || (attached as any)?.document?.status,
     };
   });
 

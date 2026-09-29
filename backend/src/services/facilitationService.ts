@@ -5,7 +5,6 @@ import { recordCoordinationNote } from './applicationService';
 import type {
   FacilitationRequest,
   FacilitationCategory,
-  FacilitationPriority,
   FacilitationStatus,
   FacilitationNote,
   FacilitationTimelineItem,

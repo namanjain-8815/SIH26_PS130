@@ -586,7 +586,7 @@ export async function deriveComplianceObligations(
     where: { project_id: projectId },
   });
 
-  const results = [];
+  const results: any[] = [];
   const now = Date.now();
 
   for (const approval of periodicApprovals) {

@@ -301,7 +301,7 @@ export async function getApplicationScrutinyPriority(applicationId: string): Pro
   const prerequisites = dependentOn
     .filter((dep) => dep.dependency_type === 'PREREQUISITE')
     .map((dep) => {
-      const pa = paByTypeId.get(dep.prerequisite_approval_type_id);
+      const pa = paByTypeId.get(dep.prerequisite_approval_type_id) as any;
       return {
         id: dep.prerequisite_approval_type_id,
         status: pa?.status ?? 'NOT_STARTED',

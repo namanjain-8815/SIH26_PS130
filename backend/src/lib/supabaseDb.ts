@@ -85,6 +85,11 @@ const RELATION_MAP: Record<string, Record<string, RelationDef>> = {
     application: { table: 'Application', foreignKey: 'application_id', isMany: false, isParent: true },
     document: { table: 'Document', foreignKey: 'document_id', isMany: false, isParent: true },
   },
+  Document: {
+    project: { table: 'Project', foreignKey: 'project_id', isMany: false, isParent: true },
+    organization: { table: 'Organization', foreignKey: 'org_id', isMany: false, isParent: true },
+    application_documents: { table: 'ApplicationDocument', foreignKey: 'document_id', isMany: true },
+  },
   ApplicationEvent: {
     application: { table: 'Application', foreignKey: 'application_id', isMany: false, isParent: true },
     actor: { table: 'User', foreignKey: 'actor_id', isMany: false, isParent: true },

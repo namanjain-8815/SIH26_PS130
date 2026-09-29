@@ -10,7 +10,12 @@ export function requireAuth(req: Request, _res: Response, next: NextFunction) {
 
   try {
     const payload = verifyToken(header.slice('Bearer '.length));
-    req.user = { id: payload.sub, role: payload.role, department_id: payload.department_id ?? null };
+    req.user = {
+      id: payload.sub,
+      role: payload.role,
+      department_id: payload.department_id ?? null,
+      org_id: (payload as any).org_id ?? null,
+    };
     next();
   } catch {
     next(new UnauthorizedError('Invalid or expired token'));

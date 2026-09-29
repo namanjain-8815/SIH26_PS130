@@ -376,10 +376,10 @@ export async function getContextualGuidance(params: {
         question: 'Which form should I use?',
         category: 'Prescribed Templates',
         title: `Official Application Format: ${prescribedForm.form_name}`,
-        answer: `Use the verified statutory format **${prescribedForm.form_name}** prescribed by **${prescribedForm.authority}**.\n\n• **Provenance**: Grounded in official government sources (${prescribedForm.source_label}).\n• **Format Type**: ${prescribedForm.format_type === 'OFFICIAL_PDF' ? 'Official Prescribed PDF Template' : 'Online Statutory Application Portal'}\n• **Status**: ${prescribedForm.provenance_status}`,
+        answer: `Use the verified statutory format **${prescribedForm.form_name}** prescribed by **${prescribedForm.authority}**.\n\n• **Provenance**: Grounded in official government sources (${prescribedForm.source_label}).\n• **Format Type**: ${prescribedForm.is_online_application ? 'Online Statutory Application Portal' : 'Official Prescribed PDF Template'}\n• **Status**: ${prescribedForm.provenance_status}`,
         actions: [
-          ...(prescribedForm.download_url ? [{ label: 'Download Official Form PDF', href: prescribedForm.download_url }] : []),
-          ...(prescribedForm.official_source_url ? [{ label: 'Open Official Authority Portal', href: prescribedForm.official_source_url }] : []),
+          ...((prescribedForm.file_path || prescribedForm.source_url) ? [{ label: 'Download Official Form PDF', href: `/api/guidance/prescribed-forms/${prescribedForm.id}/download` }] : []),
+          ...(prescribedForm.official_online_url ? [{ label: 'Open Official Authority Portal', href: prescribedForm.official_online_url }] : []),
         ],
         suggested_follow_ups: ['what_documents_needed', 'why_permission_required'],
       };

@@ -1,8 +1,10 @@
 import { prisma } from '../lib/prisma';
-import { LocalStorageAdapter } from '../adapters/LocalStorageAdapter';
-import { NotFoundError } from '../lib/errors';
+import { SupabaseStorageAdapter } from '../adapters/SupabaseStorageAdapter';
+import { NotFoundError, BadRequestError } from '../lib/errors';
+import { extractFieldsFromPdf, DocumentExtractionResult } from './pdfExtractionService';
+import { recordAudit } from './auditService';
 
-const storage = new LocalStorageAdapter();
+export const storage = new SupabaseStorageAdapter();
 
 export async function listDocuments(projectId: string) {
   const docs = await prisma.document.findMany({
@@ -19,15 +21,49 @@ export async function listDocuments(projectId: string) {
 
   const reuseMap = new Map(reuseCountsRaw.map((r) => [r.document_id, r._count.document_id]));
 
-  return docs.map((doc) => ({
-    ...doc,
-    reuse_count: reuseMap.get(doc.id) ?? 0,
-    is_expiring_soon:
-      doc.expiry_date != null &&
-      doc.expiry_date > new Date() &&
-      doc.expiry_date < new Date(Date.now() + 30 * 86_400_000),
-    is_expired: doc.expiry_date != null && doc.expiry_date <= new Date(),
-  }));
+  // Retrieve cached extractions from ProjectAttribute
+  const extractionAttrs = await prisma.projectAttribute.findMany({
+    where: { project_id: projectId },
+  });
+  const extractionMap = new Map<string, DocumentExtractionResult>();
+  for (const a of extractionAttrs) {
+    if (a.key.startsWith('doc_extraction:')) {
+      const docId = a.key.replace('doc_extraction:', '');
+      try {
+        extractionMap.set(docId, JSON.parse(a.value));
+      } catch {}
+    }
+  }
+
+  // Check physical file availability in storage
+  const availabilityEntries = await Promise.all(
+    docs.map(async (doc) => {
+      const isAvailable = doc.file_url ? await storage.exists(doc.file_url) : false;
+      return [doc.id, isAvailable] as const;
+    })
+  );
+  const availabilityMap = new Map(availabilityEntries);
+
+  return docs.map((doc) => {
+    const ext = extractionMap.get(doc.id);
+    return {
+      ...doc,
+      is_file_available: availabilityMap.get(doc.id) ?? false,
+      reuse_count: reuseMap.get(doc.id) ?? 0,
+      extracted_field_count: ext ? ext.field_count : 0,
+      extraction_status: ext
+        ? ext.status
+        : doc.verification_status === 'VERIFIED'
+        ? 'EXTRACTED'
+        : 'PENDING',
+      is_readable: ext ? ext.is_readable : true,
+      is_expiring_soon:
+        doc.expiry_date != null &&
+        doc.expiry_date > new Date() &&
+        doc.expiry_date < new Date(Date.now() + 30 * 86_400_000),
+      is_expired: doc.expiry_date != null && doc.expiry_date <= new Date(),
+    };
+  });
 }
 
 export async function getDocument(id: string) {
@@ -48,15 +84,37 @@ export async function getDocument(id: string) {
   const appDocs = doc.application_documents || [];
   const reuseCount = appDocs.length;
 
+  const isFileAvailable = doc.file_url ? await storage.exists(doc.file_url) : false;
+
+  // Determine delete safety
+  // If attached to any application that is past draft (e.g. SUBMITTED, APPROVED, UNDER_REVIEW), deletion is blocked
+  const submittedApp = appDocs.find(
+    (ad: any) => ad.application && !['NOT_STARTED', 'DRAFT'].includes(ad.application.status)
+  );
+  const canDelete = !submittedApp;
+  const deleteProtectionReason = submittedApp
+    ? `Document is attached to submitted application ${submittedApp.application.application_number} (${submittedApp.application.status}). Statutory audit trail requires retaining historical exhibits.`
+    : undefined;
+
+  let extraction: DocumentExtractionResult | null = null;
+  try {
+    extraction = await getDocumentExtraction(id);
+  } catch {}
+
   return {
     ...doc,
+    is_file_available: isFileAvailable,
     reuse_count: reuseCount,
+    can_delete: canDelete,
+    delete_protection_reason: deleteProtectionReason,
     reused_by: appDocs.map((ad: any) => ({
       application_id: ad.application_id,
       application_number: ad.application?.application_number,
       approval_name: ad.application?.project_approval?.approval_type?.name,
+      application_status: ad.application?.status,
       validation_status: ad.validation_status,
     })),
+    extraction,
   };
 }
 
@@ -91,6 +149,23 @@ export async function uploadDocument(
     },
   });
 
+  // Extract structured fields from the actual uploaded PDF buffer
+  let extractionResult: DocumentExtractionResult | null = null;
+  try {
+    extractionResult = await extractFieldsFromPdf(buffer, {
+      documentId: doc.id,
+      fileName: originalName,
+      documentType,
+    });
+    await prisma.projectAttribute.upsert({
+      where: { project_id_key: { project_id: projectId, key: `doc_extraction:${doc.id}` } },
+      update: { value: JSON.stringify(extractionResult) },
+      create: { project_id: projectId, key: `doc_extraction:${doc.id}`, value: JSON.stringify(extractionResult) },
+    });
+  } catch (err) {
+    console.error('PDF field extraction failed on upload:', err);
+  }
+
   if (applicationId) {
     await prisma.applicationDocument.upsert({
       where: { application_id_document_id: { application_id: applicationId, document_id: doc.id } },
@@ -99,7 +174,10 @@ export async function uploadDocument(
     });
   }
 
-  return doc;
+  return {
+    ...doc,
+    extraction: extractionResult,
+  };
 }
 
 export async function replaceDocument(
@@ -112,7 +190,7 @@ export async function replaceDocument(
   if (!existing) throw new NotFoundError('Document not found');
 
   const stored = await storage.save(originalName, buffer);
-  return prisma.document.update({
+  const updated = await prisma.document.update({
     where: { id },
     data: {
       file_name: stored.file_name,
@@ -122,6 +200,151 @@ export async function replaceDocument(
       expiry_date: expiryDate ?? existing.expiry_date,
     },
   });
+
+  // Re-run PDF field extraction on the new buffer
+  let extractionResult: DocumentExtractionResult | null = null;
+  try {
+    extractionResult = await extractFieldsFromPdf(buffer, {
+      documentId: id,
+      fileName: originalName,
+      documentType: existing.document_type,
+    });
+    await prisma.projectAttribute.upsert({
+      where: { project_id_key: { project_id: existing.project_id, key: `doc_extraction:${id}` } },
+      update: { value: JSON.stringify(extractionResult) },
+      create: { project_id: existing.project_id, key: `doc_extraction:${id}`, value: JSON.stringify(extractionResult) },
+    });
+  } catch (err) {
+    console.error('PDF field extraction failed on replace:', err);
+  }
+
+  return {
+    ...updated,
+    extraction: extractionResult,
+  };
+}
+
+export async function reExtractDocument(id: string): Promise<DocumentExtractionResult> {
+  const doc = await prisma.document.findUnique({ where: { id } });
+  if (!doc) throw new NotFoundError('Document not found');
+
+  const buffer = await storage.read(doc.file_url);
+  if (!buffer) {
+    throw new NotFoundError('Document physical file is unavailable in storage. Please upload or replace the document.');
+  }
+
+  const extractionResult = await extractFieldsFromPdf(buffer, {
+    documentId: id,
+    fileName: doc.file_name,
+    documentType: doc.document_type,
+  });
+
+  await prisma.projectAttribute.upsert({
+    where: { project_id_key: { project_id: doc.project_id, key: `doc_extraction:${id}` } },
+    update: { value: JSON.stringify(extractionResult) },
+    create: { project_id: doc.project_id, key: `doc_extraction:${id}`, value: JSON.stringify(extractionResult) },
+  });
+
+  return extractionResult;
+}
+
+export async function getDocumentExtraction(id: string): Promise<DocumentExtractionResult> {
+  const doc = await prisma.document.findUnique({ where: { id } });
+  if (!doc) throw new NotFoundError('Document not found');
+
+  const attr = await prisma.projectAttribute.findUnique({
+    where: { project_id_key: { project_id: doc.project_id, key: `doc_extraction:${id}` } },
+  });
+
+  if (attr) {
+    try {
+      return JSON.parse(attr.value);
+    } catch {}
+  }
+
+  // Attempt on-demand extraction from disk
+  const buffer = await storage.read(doc.file_url);
+  if (buffer) {
+    const extractionResult = await extractFieldsFromPdf(buffer, {
+      documentId: id,
+      fileName: doc.file_name,
+      documentType: doc.document_type,
+    });
+    await prisma.projectAttribute.upsert({
+      where: { project_id_key: { project_id: doc.project_id, key: `doc_extraction:${id}` } },
+      update: { value: JSON.stringify(extractionResult) },
+      create: { project_id: doc.project_id, key: `doc_extraction:${id}`, value: JSON.stringify(extractionResult) },
+    }).catch(() => {});
+    return extractionResult;
+  }
+
+  return {
+    document_id: id,
+    document_type: doc.document_type,
+    file_name: doc.file_name,
+    is_readable: false,
+    page_count: 0,
+    status: 'MANUAL_VERIFICATION_REQUIRED',
+    extracted_at: new Date().toISOString(),
+    field_count: 0,
+    fields: {},
+  };
+}
+
+/**
+ * Safely deletes a document conforming to regulatory history rules.
+ */
+export async function deleteDocument(id: string, actorId?: string) {
+  const doc = await prisma.document.findUnique({ where: { id } });
+  if (!doc) throw new NotFoundError('Document not found');
+
+  const appDocs = await prisma.applicationDocument.findMany({
+    where: { document_id: id },
+    include: { application: true },
+  });
+
+  const submittedApp = appDocs.find(
+    (ad: any) => ad.application && !['NOT_STARTED', 'DRAFT'].includes(ad.application.status)
+  );
+
+  if (submittedApp) {
+    throw new BadRequestError(
+      `Cannot delete document: It is attached to submitted application ${submittedApp.application.application_number} (${submittedApp.application.status}). Historical exhibits cannot be destroyed.`
+    );
+  }
+
+  // Safe to delete: remove associations in draft applications
+  if (appDocs.length > 0) {
+    await prisma.applicationDocument.deleteMany({
+      where: { document_id: id },
+    });
+  }
+
+  // Remove extraction attributes
+  await prisma.projectAttribute.deleteMany({
+    where: { project_id: doc.project_id, key: `doc_extraction:${id}` },
+  });
+
+  // Remove database record
+  await prisma.document.delete({ where: { id } });
+
+  // Delete physical storage file
+  if (doc.file_url) {
+    await storage.delete(doc.file_url).catch(() => {});
+  }
+
+  // Audit event
+  await recordAudit({
+    actor_id: actorId,
+    action: 'DOCUMENT_DELETED',
+    entity_type: 'Document',
+    entity_id: id,
+    before_data: { file_name: doc.file_name, document_type: doc.document_type, project_id: doc.project_id },
+    after_data: null,
+    metadata: { reason: 'User initiated safe deletion of unsubmitted vault document' },
+  });
+
+  return { success: true, message: `Document "${doc.file_name}" deleted successfully.` };
 }
 
 export async function updateDocument(
@@ -158,10 +381,6 @@ export async function updateDocument(
   return updated;
 }
 
-/**
- * Returns all document types that are required for a project's approvals
- * but haven't yet been uploaded. Used to show "missing documents" in the vault.
- */
 export async function getMissingDocuments(projectId: string) {
   const projectApprovals = await prisma.projectApproval.findMany({
     where: { project_id: projectId },

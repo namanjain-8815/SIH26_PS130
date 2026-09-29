@@ -439,7 +439,7 @@ export async function getProjectSubmissionCentre(projectId: string): Promise<Pro
     // Prerequisite evaluation
     const prereqDeps = dependencies.filter((d) => d.dependent_approval_type_id === pa.approval_type_id);
     const prereqList = prereqDeps.map((d) => {
-      const prereqPA = paByTypeId.get(d.prerequisite_approval_type_id);
+      const prereqPA = paByTypeId.get(d.prerequisite_approval_type_id) as any;
       const isSatisfied = prereqPA?.status === 'COMPLETED';
       return {
         approval_type_id: d.prerequisite_approval_type_id,
@@ -461,7 +461,7 @@ export async function getProjectSubmissionCentre(projectId: string): Promise<Pro
       .map((dr) => dr.document_type);
 
     const uploadedDocuments = appDocs.map((ad) => {
-      const count = reuseMap.get(ad.document_id) ?? 1;
+      const count = Number(reuseMap.get(ad.document_id) ?? 1);
       return {
         document_id: ad.document_id,
         document_type: ad.document.document_type,
@@ -545,7 +545,7 @@ export async function getProjectSubmissionCentre(projectId: string): Promise<Pro
     }
 
     // Scrutiny complexity
-    let scrutinyPriority = null;
+    let scrutinyPriority: any = null;
     if (app) {
       const scrutiny = calculateScrutinyPriority({
         application_status: app.status,

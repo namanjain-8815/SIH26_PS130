@@ -5,7 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { cn } from '@/lib/utils';
 import { formatRole } from '@/lib/terminology';
-import { FileText, GitMerge, Clock, Gift, ScrollText, LogOut, ShieldCheck, Settings } from 'lucide-react';
+import { FileText, GitMerge, Clock, Gift, ScrollText, LogOut, ShieldCheck, Settings, Users } from 'lucide-react';
 import { AuthLoadingState, PermissionDeniedState } from '@/components/ui/States';
 import { BhashiniSeamButton } from '@/components/ui/BhashiniSeam';
 
@@ -15,6 +15,7 @@ const NAV = [
   { href: '/admin/dependencies',    label: 'Permission Dependencies',    icon: GitMerge },
   { href: '/admin/sla-policies',    label: 'Specified Time Policies',   icon: Clock },
   { href: '/admin/incentive-schemes',label: 'Incentive Schemes',         icon: Gift },
+  { href: '/admin/users',           label: 'Officer & User Management',  icon: Users },
   { href: '/admin/audit-log',       label: 'Audit Trail & Logs',         icon: ScrollText },
 ];
 

@@ -139,6 +139,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               <div className="flex-1 min-w-0">
                 <p className="text-white text-xs font-medium truncate">{user.name}</p>
                 <p className="text-primary-300 text-[11px] truncate font-medium">{formatRole(user.role)}</p>
+                {user.role === 'MANAGER' && (
+                  <p className="text-amber-300/80 text-[10px] truncate">Rep: {user.organization?.legal_name || 'ABC Foods Pvt Ltd'}</p>
+                )}
               </div>
               <ChevronRight className="w-3.5 h-3.5 text-gray-500 flex-shrink-0" />
             </div>
@@ -151,15 +154,27 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         {/* Top Context Header Bar */}
         <header className="bg-white border-b border-gray-200 px-6 py-2.5 flex items-center justify-between flex-shrink-0 z-10">
           <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2 px-3 py-1 bg-primary-50 border border-primary-200/80 rounded-xl text-primary-900">
-              <Building2 className="w-4 h-4 text-primary-700 flex-shrink-0" />
-              <div className="text-xs">
-                <span className="font-semibold text-gray-900">Applicant Entity: </span>
-                <span className="text-primary-800 font-bold">ABC Foods Pvt Ltd</span>
-                <span className="text-gray-400 mx-1.5">|</span>
-                <span className="text-gray-600 font-medium">{formatRole(user.role)}</span>
+            {user.role === 'MANAGER' ? (
+              <div className="flex items-center gap-2 px-3 py-1 bg-amber-50 border border-amber-300 rounded-xl text-amber-950 shadow-xs">
+                <Building2 className="w-4 h-4 text-amber-700 flex-shrink-0" />
+                <div className="text-xs">
+                  <span className="font-bold text-amber-900">Authorized Representative</span>
+                  <span className="text-amber-400 mx-1.5">·</span>
+                  <span className="text-gray-600">Representing: </span>
+                  <span className="font-bold text-gray-950">{user.organization?.legal_name || 'ABC Foods Pvt Ltd'}</span>
+                </div>
               </div>
-            </div>
+            ) : (
+              <div className="flex items-center gap-2 px-3 py-1 bg-primary-50 border border-primary-200/80 rounded-xl text-primary-900 shadow-xs">
+                <Building2 className="w-4 h-4 text-primary-700 flex-shrink-0" />
+                <div className="text-xs">
+                  <span className="font-semibold text-gray-700">Enterprise: </span>
+                  <span className="text-primary-900 font-bold">{user.organization?.legal_name || 'ABC Foods Pvt Ltd'}</span>
+                  <span className="text-gray-400 mx-1.5">|</span>
+                  <span className="text-gray-600 font-medium">{formatRole(user.role)}</span>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="flex items-center gap-2.5">

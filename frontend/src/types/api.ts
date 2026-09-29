@@ -239,6 +239,9 @@ export interface DocumentItem {
   reuse_count: number;
   is_expiring_soon: boolean;
   is_expired: boolean;
+  is_file_available?: boolean;
+  extracted_field_count?: number;
+  extraction_status?: string;
 }
 
 export interface ComplianceItem {

@@ -90,13 +90,13 @@ export async function getWorkQueue(filters: {
 
     const dependentOn = approvalType?.dependent_on ?? [];
     const projectApprovals = project?.project_approvals ?? [];
-    const paByTypeId = new Map(projectApprovals.map((pa) => [pa.approval_type_id, pa]));
+    const paByTypeId = new Map<string, any>(projectApprovals.map((pa: any) => [pa.approval_type_id, pa]));
 
     const prerequisites = dependentOn
       .filter((dep: any) => dep.dependency_type === 'PREREQUISITE')
       .map((dep: any) => ({
         id: dep.prerequisite_approval_type_id,
-        status: paByTypeId.get(dep.prerequisite_approval_type_id)?.status ?? 'NOT_STARTED',
+        status: (paByTypeId.get(dep.prerequisite_approval_type_id) as any)?.status ?? 'NOT_STARTED',
       }));
 
     const distinctDepts = new Set<string>();

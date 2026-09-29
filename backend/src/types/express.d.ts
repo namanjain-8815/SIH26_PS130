@@ -7,6 +7,7 @@ declare global {
         id: string;
         role: string;
         department_id?: string | null;
+        org_id?: string | null;
       };
     }
   }

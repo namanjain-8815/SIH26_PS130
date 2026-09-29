@@ -11,12 +11,24 @@ export interface AuthUser {
   org_id: string | null;
   department_id: string | null;
   department?: { id: string; name: string } | null;
+  organization?: { id: string; name: string; legal_name?: string } | null;
+}
+
+export interface RegisterInput {
+  name: string;
+  email: string;
+  password: string;
+  entity_name: string;
+  entity_type?: string;
+  sector?: string;
 }
 
 interface AuthContextValue {
   user: AuthUser | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
+  register: (data: RegisterInput) => Promise<void>;
+  setAuthSession: (token: string, user: AuthUser) => void;
   logout: () => void;
 }
 
@@ -27,7 +39,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const token = window.localStorage.getItem('token');
+    // Session-scoped token per Milestone B0.10: checks sessionStorage, clears legacy localStorage if found
+    let token: string | null = null;
+    if (typeof window !== 'undefined') {
+      token = window.sessionStorage.getItem('token') || window.localStorage.getItem('token');
+      if (token && !window.sessionStorage.getItem('token')) {
+        window.sessionStorage.setItem('token', token);
+      }
+      window.localStorage.removeItem('token');
+    }
+
     if (!token) {
       setLoading(false);
       return;
@@ -35,22 +56,54 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     api
       .get<AuthUser>('/auth/me')
       .then(setUser)
-      .catch(() => window.localStorage.removeItem('token'))
+      .catch(() => {
+        if (typeof window !== 'undefined') {
+          window.sessionStorage.removeItem('token');
+          window.localStorage.removeItem('token');
+        }
+      })
       .finally(() => setLoading(false));
   }, []);
 
   async function login(email: string, password: string) {
     const result = await api.post<{ token: string; user: AuthUser }>('/auth/login', { email, password });
-    window.localStorage.setItem('token', result.token);
+    if (typeof window !== 'undefined') {
+      window.sessionStorage.setItem('token', result.token);
+      window.localStorage.removeItem('token');
+    }
     setUser(result.user);
   }
 
+  async function register(data: RegisterInput) {
+    const result = await api.post<{ token: string; user: AuthUser }>('/auth/register', data);
+    if (typeof window !== 'undefined') {
+      window.sessionStorage.setItem('token', result.token);
+      window.localStorage.removeItem('token');
+    }
+    setUser(result.user);
+  }
+
+  function setAuthSession(token: string, newUser: AuthUser) {
+    if (typeof window !== 'undefined') {
+      window.sessionStorage.setItem('token', token);
+      window.localStorage.removeItem('token');
+    }
+    setUser(newUser);
+  }
+
   function logout() {
-    window.localStorage.removeItem('token');
+    if (typeof window !== 'undefined') {
+      window.sessionStorage.removeItem('token');
+      window.localStorage.removeItem('token');
+    }
     setUser(null);
   }
 
-  return <AuthContext.Provider value={{ user, loading, login, logout }}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={{ user, loading, login, register, setAuthSession, logout }}>
+      {children}
+    </AuthContext.Provider>
+  );
 }
 
 export function useAuth() {

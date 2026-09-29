@@ -3,23 +3,67 @@ import path from 'path';
 import { randomUUID } from 'crypto';
 import { StorageAdapter, StoredFile } from './StorageAdapter';
 
-const UPLOAD_DIR = path.join(process.cwd(), 'uploads');
+function getUploadDir(): string {
+  if (process.cwd().endsWith('backend')) {
+    return path.join(process.cwd(), 'uploads');
+  }
+  return path.join(process.cwd(), 'backend', 'uploads');
+}
 
-/**
- * MVP implementation, local disk behind the StorageAdapter interface — swap
- * for an S3/Supabase-backed adapter later without touching call sites
- * (plan §16, §29).
- */
 export class LocalStorageAdapter implements StorageAdapter {
+  private getUploadDirs(): string[] {
+    const cwd = process.cwd();
+    return Array.from(new Set([
+      getUploadDir(),
+      path.join(cwd, 'uploads'),
+      path.join(cwd, 'backend', 'uploads'),
+      path.resolve(__dirname, '../../uploads'),
+      path.resolve(__dirname, '../../../uploads'),
+    ]));
+  }
+
   async save(originalName: string, buffer: Buffer): Promise<StoredFile> {
-    await fs.mkdir(UPLOAD_DIR, { recursive: true });
+    const uploadDir = getUploadDir();
+    await fs.mkdir(uploadDir, { recursive: true });
     const safeName = `${randomUUID()}-${originalName.replace(/[^a-zA-Z0-9.\-_]/g, '_')}`;
-    await fs.writeFile(path.join(UPLOAD_DIR, safeName), buffer);
+    await fs.writeFile(path.join(uploadDir, safeName), buffer);
     return { url: `/uploads/${safeName}`, file_name: originalName };
   }
 
   async delete(url: string): Promise<void> {
-    const filePath = path.join(UPLOAD_DIR, path.basename(url));
-    await fs.rm(filePath, { force: true });
+    const baseName = path.basename(url);
+    for (const dir of this.getUploadDirs()) {
+      const filePath = path.join(dir, baseName);
+      await fs.rm(filePath, { force: true }).catch(() => {});
+    }
+  }
+
+  async read(url: string): Promise<Buffer | null> {
+    if (!url) return null;
+    const baseName = path.basename(url);
+    const cleanUrl = url.replace(/^\/+/, '');
+    const relativeToUploads = url.replace(/^\/?uploads\/?/, '');
+
+    const candidatePaths: string[] = [];
+    for (const dir of this.getUploadDirs()) {
+      candidatePaths.push(path.join(dir, baseName));
+      candidatePaths.push(path.join(dir, 'demo', baseName));
+      candidatePaths.push(path.join(dir, relativeToUploads));
+      candidatePaths.push(path.resolve(dir, '..', cleanUrl));
+    }
+    candidatePaths.push(path.join(process.cwd(), cleanUrl));
+
+    for (const p of candidatePaths) {
+      try {
+        const stats = await fs.stat(p);
+        if (stats.isFile()) {
+          return await fs.readFile(p);
+        }
+      } catch {
+        // try next candidate
+      }
+    }
+    return null;
   }
 }
+

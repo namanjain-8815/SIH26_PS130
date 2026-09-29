@@ -7,6 +7,7 @@ export interface TokenPayload {
   sub: string;
   role: string;
   department_id?: string | null;
+  org_id?: string | null;
 }
 
 export function signToken(payload: TokenPayload): string {

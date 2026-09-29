@@ -2,7 +2,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api';
 
 function getToken(): string | null {
   if (typeof window === 'undefined') return null;
-  return window.localStorage.getItem('token');
+  return window.sessionStorage.getItem('token') || window.localStorage.getItem('token');
 }
 
 export async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
@@ -53,8 +53,10 @@ import type { Project, ProjectApproval, ApprovalType } from '@/types';
 // Auth
 export const authApi = {
   login: (email: string, password: string) =>
-    api.post<{ token: string; user: { id: string; name: string; email: string; role: string; org_id: string | null; department_id: string | null } }>('/auth/login', { email, password }),
-  me: () => api.get<{ id: string; name: string; email: string; role: string; org_id: string | null; department_id: string | null }>('/auth/me'),
+    api.post<{ token: string; user: { id: string; name: string; email: string; role: string; org_id: string | null; department_id: string | null; department?: { id: string; name: string } | null; organization?: { id: string; name: string; legal_name?: string } | null } }>('/auth/login', { email, password }),
+  register: (data: { name: string; email: string; password: string; entity_name: string; entity_type?: string; sector?: string }) =>
+    api.post<{ token: string; user: { id: string; name: string; email: string; role: string; org_id: string | null; department_id: string | null; department?: { id: string; name: string } | null; organization?: { id: string; name: string; legal_name?: string } | null } }>('/auth/register', data),
+  me: () => api.get<{ id: string; name: string; email: string; role: string; org_id: string | null; department_id: string | null; department?: { id: string; name: string } | null; organization?: { id: string; name: string; legal_name?: string } | null }>('/auth/me'),
 };
 
 // Projects
@@ -218,8 +220,15 @@ export const inspectionsApi = {
 
 // Documents
 export const documentsApi = {
+  getFileUrl: (id: string) => `${API_URL}/documents/${id}/file`,
   get: (id: string) => api.get<import('@/types/api').DocumentItem>(`/documents/${id}`),
   update: (id: string, data: object) => api.patch(`/documents/${id}`, data),
+  delete: (id: string) => api.delete<{ message: string; deleted_id: string }>(`/documents/${id}`),
+  reExtract: (id: string) => api.post<{ message: string; extraction: any }>(`/documents/${id}/re-extract`, {}),
+  getExtractedFields: (id: string) => api.get<any>(`/documents/${id}/extracted-fields`),
+  getDetailCentre: (projectId: string) => api.get<any>(`/projects/${projectId}/document-detail-centre`),
+  updateMasterField: (projectId: string, fieldKey: string, body: { master_value?: any; value?: any; confirmed?: boolean; note?: string }) =>
+    api.patch<any>(`/projects/${projectId}/document-detail-centre/${fieldKey}`, body),
   upload: (projectId: string, body: { org_id?: string; document_type: string; file_name: string; file_base64: string; expiry_date?: string; issued_date?: string; application_id?: string }) =>
     api.post<import('@/types/api').DocumentItem>(`/projects/${projectId}/documents`, body),
   replace: (id: string, body: { file_name: string; file_base64: string; expiry_date?: string }) =>
@@ -386,6 +395,27 @@ export const adminApi = {
   auditLog: (filters?: { entity_type?: string; actor_id?: string; action?: string }) => {
     const params = new URLSearchParams(filters as Record<string, string>).toString();
     return api.get<unknown[]>(`/admin/audit-log${params ? `?${params}` : ''}`);
+  },
+  users: {
+    list: () =>
+      api.get<
+        Array<{
+          id: string;
+          name: string;
+          email: string;
+          role: string;
+          department_id: string | null;
+          department?: { id: string; name: string } | null;
+          organization?: { id: string; legal_name?: string } | null;
+          created_at: string;
+        }>
+      >('/admin/users'),
+    create: (data: { name: string; email: string; password: string; role: string; department_id?: string | null }) =>
+      api.post<any>('/admin/users', data),
+  },
+  departments: {
+    list: () =>
+      api.get<Array<{ id: string; name: string; code?: string; state?: string; district?: string }>>('/admin/departments'),
   },
 };
 

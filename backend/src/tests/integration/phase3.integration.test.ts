@@ -135,6 +135,13 @@ describe('Phase 3 — Core Application Workflows Integration Tests', () => {
       headers: { Authorization: `Bearer ${entrepreneurToken}` },
     });
     assert.strictEqual(detachRes.status, 200);
+
+    // F. Clean up test document to prevent cluttering the demo vault
+    const deleteRes = await fetch(`${baseUrl}/api/documents/${uploadedDoc.id}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${entrepreneurToken}` },
+    });
+    assert.strictEqual(deleteRes.status, 200);
   });
 
   it('5. Query Lifecycle: officer raises → applicant responds → officer resolves', async () => {
