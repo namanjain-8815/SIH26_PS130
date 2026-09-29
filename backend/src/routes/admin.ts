@@ -3,7 +3,7 @@ import { requireAuth } from '../middleware/auth';
 import { requireRole } from '../middleware/roleGuard';
 import { prisma } from '../lib/prisma';
 import * as auditService from '../services/auditService';
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 
 
 const router = Router();

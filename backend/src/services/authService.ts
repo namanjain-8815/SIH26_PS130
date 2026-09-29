@@ -1,4 +1,4 @@
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 import { prisma } from '../lib/prisma';
 import { signToken } from '../lib/jwt';
 import { UnauthorizedError, NotFoundError, BadRequestError } from '../lib/errors';

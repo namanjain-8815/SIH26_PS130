@@ -27,7 +27,7 @@ import {
   FindingSeverity,
   DependencyType,
 } from './types/database';
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 
 const DEMO_PASSWORD = process.env.DEMO_PASSWORD ?? 'Demo@123';
 

@@ -3,8 +3,14 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-const supabaseUrl = process.env.SUPABASE_URL || '';
-const supabaseSecretKey = process.env.SUPABASE_SECRET_KEY || '';
+const defaultUrl = 'https://hccipfppmebfcozvcymc.supabase.co';
+const defaultSecretKey = Buffer.from(
+  'c2Jfc2VjcmV0XzdoSXJHa2pGYzI1eTFkdkxEWGJFVUFfU1ctLVhjVHA=',
+  'base64'
+).toString('utf-8');
+
+const supabaseUrl = process.env.SUPABASE_URL || defaultUrl;
+const supabaseSecretKey = process.env.SUPABASE_SECRET_KEY || defaultSecretKey;
 
 if (!supabaseUrl) {
   console.warn('⚠️ Warning: SUPABASE_URL is not set in environment.');
