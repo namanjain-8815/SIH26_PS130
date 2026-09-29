@@ -6,7 +6,8 @@ import Link from 'next/link';
 import { projectsApi, projectApprovalsApi, applicationsApi } from '@/lib/api';
 import { StatusBadge, PriorityBadge } from '@/components/ui/StatusBadge';
 import { CardSkeleton, EmptyState, ErrorState } from '@/components/ui/States';
-import { useState } from 'react';
+import { useState, useEffect, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { formatDate } from '@/lib/utils';
 import {
   ChevronRight,
@@ -34,10 +35,26 @@ const DEMO_PROJECT_ID = 'proj-abc-foods-001';
 type StatusFilter = 'ALL' | 'NOT_STARTED' | 'IN_PROGRESS' | 'BLOCKED' | 'COMPLETED';
 
 export default function ApprovalsPage() {
-  const [filter, setFilter] = useState<StatusFilter>('ALL');
+  return (
+    <Suspense fallback={<div className="p-6"><CardSkeleton lines={5} /></div>}>
+      <ApprovalsContent />
+    </Suspense>
+  );
+}
+
+function ApprovalsContent() {
+  const searchParams = useSearchParams();
+  const urlFilter = (searchParams.get('filter') as StatusFilter) || 'ALL';
+  const [filter, setFilter] = useState<StatusFilter>(urlFilter);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [orchestrationResult, setOrchestrationResult] = useState<ParallelOrchestrationResult | null>(null);
   const qc = useQueryClient();
+
+  useEffect(() => {
+    if (urlFilter) {
+      setFilter(urlFilter);
+    }
+  }, [urlFilter]);
 
   const { data: approvals, isLoading, error, refetch } = useQuery({
     queryKey: ['project-approvals', DEMO_PROJECT_ID],

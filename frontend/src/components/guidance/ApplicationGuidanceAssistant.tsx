@@ -235,19 +235,16 @@ function ApplicationGuidanceAssistantContent() {
 
   return (
     <>
-      {/* Floating Launcher Button */}
-      <div className="fixed bottom-6 right-6 z-40">
+      {/* Floating Launcher Button - Logo Only */}
+      <div className="fixed bottom-22 right-6 z-40">
         <button
           type="button"
           onClick={() => setIsOpen(true)}
-          className="group flex items-center gap-2.5 px-4 py-2.5 bg-primary-800 hover:bg-primary-900 text-white rounded-full shadow-lg hover:shadow-xl transition-all duration-200 border border-primary-700/80 active:scale-95"
-          title="Open Contextual Application Guidance Assistant"
+          className="group w-12 h-12 rounded-full bg-gradient-to-tr from-primary-800 to-primary-700 hover:from-primary-900 hover:to-primary-800 text-white shadow-xl hover:shadow-2xl transition-all duration-200 border-2 border-primary-500/30 flex items-center justify-center active:scale-95 relative"
+          title="Open Guidance Assistant"
         >
-          <div className="w-6 h-6 rounded-full bg-primary-600 flex items-center justify-center flex-shrink-0 group-hover:rotate-12 transition-transform">
-            <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-          </div>
-          <span className="text-xs font-bold tracking-wide">Guidance Assistant</span>
-          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+          <Sparkles className="w-5 h-5 text-amber-300 group-hover:rotate-12 transition-transform" />
+          <span className="absolute top-0 right-0 w-3 h-3 bg-emerald-400 border-2 border-white rounded-full animate-pulse" />
         </button>
       </div>
 
@@ -273,7 +270,7 @@ function ApplicationGuidanceAssistantContent() {
                         Live Grounded
                       </span>
                     </h3>
-                    <p className="text-[11px] text-slate-400">Deterministic Single Window Statutory Advisor</p>
+                    <p className="text-[11px] text-slate-400">Single Window Statutory Advisor</p>
                   </div>
                 </div>
 
@@ -456,7 +453,7 @@ function ApplicationGuidanceAssistantContent() {
 
               {/* Statutory Disclaimer & Facilitation Bridge */}
               <div className="flex items-center justify-between text-[10px] text-gray-400 px-1 pt-1">
-                <span>Deterministic statutory rules · No external LLM</span>
+                <span>LLM integration is future work</span>
                 <Link
                   href="/app/assistance"
                   onClick={() => setIsOpen(false)}

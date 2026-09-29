@@ -9,7 +9,7 @@ import { ErrorState, TableRowSkeleton, EmptyState } from '@/components/ui/States
 import { formatDate, formatDateTime } from '@/lib/utils';
 import { useAuth } from '@/lib/auth-context';
 import { formatRole } from '@/lib/terminology';
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect, useRef, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import type { WorkQueueItem } from '@/types/api';
 import {
@@ -55,6 +55,14 @@ function WorkQueueContent() {
   const [scrutinyFilter, setScrutinyFilter] = useState('');
   const [departmentFilter, setDepartmentFilter] = useState('');
   const [selected, setSelected] = useState<WorkQueueItem | null>(null);
+  const detailPanelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (selected && detailPanelRef.current) {
+      detailPanelRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      detailPanelRef.current.scrollTop = 0;
+    }
+  }, [selected?.id]);
 
   // Inspector-specific modals and state
   const [showRecordFindingModal, setShowRecordFindingModal] = useState(false);
@@ -352,14 +360,22 @@ function WorkQueueContent() {
               MAITRI Single Window Nodal Oversight · Cross-Department Monitoring
             </p>
           ) : user?.role === 'INSPECTOR' ? (
-            <div className="flex items-center gap-2 mb-3">
-              <div className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-purple-50 border border-purple-200 rounded-lg text-xs font-semibold text-purple-900">
-                <CheckCircle2 className="w-3.5 h-3.5 text-purple-700" />
-                <span>Designated Inspection Desk: Site Verification & Findings</span>
-                <span className="inline-flex items-center gap-1 text-[10px] bg-purple-200/60 text-purple-800 px-1.5 py-0.5 rounded font-bold ml-1">
-                  Field Inspection Mandate
-                </span>
+            <div className="flex items-center justify-between gap-2 mb-3 bg-purple-50/80 border border-purple-200/90 p-2.5 rounded-xl">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-purple-700 shrink-0" />
+                <div>
+                  <p className="text-xs font-semibold text-purple-950">Designated Inspection Desk: Site Verification & Findings</p>
+                  <p className="text-[11px] text-purple-700">Physical audits, defect notes, and joint inspection synchronization</p>
+                </div>
               </div>
+              <button
+                type="button"
+                onClick={() => router.push('/government/inspections')}
+                className="inline-flex items-center gap-1 px-2.5 py-1 bg-purple-700 hover:bg-purple-800 text-white text-xs font-medium rounded-lg shadow-2xs transition-colors shrink-0"
+              >
+                <span>Dedicated Inspection Desk</span>
+                <ArrowUpRight className="w-3.5 h-3.5" />
+              </button>
             </div>
           ) : null}
 
@@ -524,7 +540,10 @@ function WorkQueueContent() {
 
       {/* Action panel */}
       {selected && (
-        <div className="flex-1 p-5 overflow-y-auto animate-fade-in bg-gray-50/30">
+        <div
+          ref={detailPanelRef}
+          className="flex-1 p-5 overflow-y-auto animate-fade-in bg-white sticky top-2 max-h-[calc(100vh-6rem)] self-start rounded-xl border border-gray-200/80 shadow-md"
+        >
           <div className="space-y-4">
             <div className="flex items-start justify-between">
               <div>

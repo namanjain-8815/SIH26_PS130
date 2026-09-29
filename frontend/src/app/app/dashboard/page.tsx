@@ -44,16 +44,13 @@ function DashboardContent() {
     queryFn: () => projectsApi.getControlCentre(projectId),
   });
 
-  const hour = new Date().getHours();
-  const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
-
   return (
     <div className="p-6 space-y-6 animate-fade-in">
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">
-            {greeting}, {user?.name?.split(' ')[0] ?? 'there'} 👋
+            Welcome back, {user?.name?.split(' ')[0] ?? 'Entrepreneur'} 👋
           </h1>
           <p className="text-gray-500 text-sm mt-1">
             {isLoading ? 'Loading your investment proposal status…' : cc
@@ -85,32 +82,32 @@ function DashboardContent() {
             <StatCard
               label="Permissions & Approvals"
               value={cc.approvals.total}
-              sub="View roadmap →"
-              href="/app/approvals"
+              sub="View all clearances →"
+              href="/app/approvals?filter=ALL"
               color="blue"
               icon={<Circle className="w-5 h-5" />}
             />
             <StatCard
               label="In Progress"
               value={cc.approvals.in_progress}
-              sub="View details →"
-              href="/app/approvals"
+              sub="View in progress →"
+              href="/app/approvals?filter=IN_PROGRESS"
               color="amber"
               icon={<Clock className="w-5 h-5" />}
             />
             <StatCard
               label="Completed"
               value={cc.approvals.completed}
-              sub="Granted clearances"
-              href="/app/approvals"
+              sub="Granted clearances →"
+              href="/app/approvals?filter=COMPLETED"
               color="green"
               icon={<CheckCircle2 className="w-5 h-5" />}
             />
             <StatCard
               label="Pending Action"
               value={cc.approvals.blocked + cc.pending_queries.length}
-              sub="Take action →"
-              href="/app/approvals"
+              sub="Take action on blockers →"
+              href="/app/approvals?filter=BLOCKED"
               color="red"
               icon={<AlertCircle className="w-5 h-5" />}
             />
@@ -133,7 +130,7 @@ function DashboardContent() {
             </div>
             <div className="flex items-center justify-between mt-3 text-xs text-gray-500">
               <span>{cc.approvals.completed} of {cc.approvals.total} permissions & approvals obtained</span>
-              <Link href={`/app/projects/${projectId}/dependency-graph`} className="text-primary-600 hover:underline font-medium">
+              <Link href={`/app/projects/${projectId}?tab=dependency-graph`} className="text-primary-600 hover:underline font-medium">
                 View permission dependency map →
               </Link>
             </div>

@@ -25,6 +25,7 @@ import {
   ChevronUp,
 } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
+import { getAbsoluteDownloadUrl } from '@/lib/api';
 
 interface Props {
   checklist: ApplicationDocumentGuidanceResponse;
@@ -400,8 +401,10 @@ export function DocumentGuidanceChecklist({
                     </div>
 
                     <a
-                      href={doc.prescribed_form.download_url}
+                      href={getAbsoluteDownloadUrl(doc.prescribed_form.download_url)}
                       download={doc.prescribed_form.file_name}
+                      target="_blank"
+                      rel="noopener noreferrer"
                       className="px-3 py-1 bg-amber-700 hover:bg-amber-800 text-white rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5 shadow-sm"
                     >
                       <Download className="w-3.5 h-3.5" />

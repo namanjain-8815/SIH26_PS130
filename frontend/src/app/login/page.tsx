@@ -3,17 +3,16 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
+import { useQueryClient } from '@tanstack/react-query';
 import {
-  Eye,
-  EyeOff,
   Building2,
   CheckCircle2,
   Zap,
   Shield,
-  UserCheck,
   Briefcase,
   Landmark,
   ShieldAlert,
+  ClipboardCheck,
   UserPlus,
   Sparkles,
   X,
@@ -21,39 +20,90 @@ import {
   Mail,
   User,
   Factory,
+  ArrowRight,
+  Eye,
+  EyeOff,
+  UserCheck,
 } from 'lucide-react';
+import { SiteTourGuide } from '@/components/ui/SiteTourGuide';
 
-type RoleCategory = 'APPLICANT' | 'REPRESENTATIVE' | 'GOVERNMENT' | 'ADMIN';
-
-const CATEGORIES: Array<{
-  id: RoleCategory;
-  label: string;
-  icon: typeof UserCheck;
-  subtitle: string;
-}> = [
+const QUICK_DEMO_ACCOUNTS = [
   {
-    id: 'APPLICANT',
+    roleKey: 'APPLICANT',
+    email: 'entrepreneur@demo.local',
     label: 'Applicant / Investor',
+    title: 'Rajesh Mehta · ABC Foods Pvt Ltd',
+    sub: 'Principal Business Owner / Promoter',
+    dest: '/app/dashboard',
     icon: Briefcase,
-    subtitle: 'Principal business owner or investor',
+    color: 'from-emerald-600 to-teal-700',
+    badge: 'Investor Desk',
   },
   {
-    id: 'REPRESENTATIVE',
+    roleKey: 'REPRESENTATIVE',
+    email: 'manager@demo.local',
     label: 'Authorized Representative',
+    title: 'Amit Deshmukh · ABC Foods Pvt Ltd',
+    sub: 'Designated Agent under Board Resolution',
+    dest: '/app/dashboard',
     icon: UserCheck,
-    subtitle: 'Duly authorized agent / consultant',
+    color: 'from-amber-600 to-orange-700',
+    badge: 'Representative',
   },
   {
-    id: 'GOVERNMENT',
-    label: 'Government Official',
+    roleKey: 'MIDC_OFFICER',
+    email: 'officer@demo.local',
+    label: 'Competent Authority — MIDC',
+    title: 'Sunil Patil · Land Allotment',
+    sub: 'Plot Allotment & Infrastructure Scrutiny Desk',
+    dest: '/government/work-queue',
     icon: Landmark,
-    subtitle: 'Competent Authority, Nodal & Inspector',
+    color: 'from-blue-600 to-indigo-700',
+    badge: 'Authority Desk',
   },
   {
-    id: 'ADMIN',
-    label: 'System Admin',
+    roleKey: 'MPCB_OFFICER',
+    email: 'pcb.officer@demo.local',
+    label: 'Competent Authority — MPCB',
+    title: 'Dr. Vivek Sharma · Pollution Control',
+    sub: 'Consent to Establish (CTE) & Operate (CTO)',
+    dest: '/government/work-queue',
+    icon: Landmark,
+    color: 'from-cyan-600 to-blue-700',
+    badge: 'Pollution Desk',
+  },
+  {
+    roleKey: 'NODAL',
+    email: 'nodal@demo.local',
+    label: 'MAITRI Nodal Officer',
+    title: 'Anjali Rane · Nodal Facilitation',
+    sub: 'Inter-Departmental Coordination & RTS Oversight',
+    dest: '/government/work-queue',
+    icon: Building2,
+    color: 'from-purple-600 to-indigo-800',
+    badge: 'Single Window',
+  },
+  {
+    roleKey: 'INSPECTOR',
+    email: 'inspector@demo.local',
+    label: 'Designated Joint Inspector',
+    title: 'Kavita Joshi · Inspection Desk',
+    sub: 'Physical Site Verification & Geo-Tagged Findings',
+    dest: '/government/inspections',
+    icon: ClipboardCheck,
+    color: 'from-violet-600 to-purple-800',
+    badge: 'Inspector Desk',
+  },
+  {
+    roleKey: 'ADMIN',
+    email: 'admin@demo.local',
+    label: 'System Administrator',
+    title: 'Admin Console · Governance',
+    sub: 'Catalogues, Applicability Rules & SLA Policies',
+    dest: '/admin/approval-types',
     icon: ShieldAlert,
-    subtitle: 'Platform configuration & security',
+    color: 'from-slate-700 to-gray-900',
+    badge: 'Super Admin',
   },
 ];
 
@@ -78,16 +128,15 @@ const SECTOR_OPTIONS = [
 export default function LoginPage() {
   const { login, register } = useAuth();
   const router = useRouter();
+  const qc = useQueryClient();
 
-  // Selected Category
-  const [category, setCategory] = useState<RoleCategory>('APPLICANT');
-
-  // Login form state
+  // Custom login state
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [quickLoginRole, setQuickLoginRole] = useState<string | null>(null);
 
   // Register modal state
   const [showRegisterModal, setShowRegisterModal] = useState(false);
@@ -102,24 +151,32 @@ export default function LoginPage() {
     sector: 'Food Processing',
   });
 
+  async function handleQuickLogin(account: typeof QUICK_DEMO_ACCOUNTS[0]) {
+    setError('');
+    setQuickLoginRole(account.roleKey);
+    try {
+      qc.clear();
+      await login(account.email, 'Demo@123');
+      router.push(account.dest);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Demo sign-in failed');
+      setQuickLoginRole(null);
+    }
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError('');
     setLoading(true);
     try {
-      await login(email, password);
+      qc.clear();
+      await login(email.trim(), password);
       router.push('/');
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Login failed');
+      setError(err instanceof Error ? err.message : 'Authentication failed. Please verify your credentials.');
     } finally {
       setLoading(false);
     }
-  }
-
-  function fillDemo(demoEmail: string) {
-    setEmail(demoEmail);
-    setPassword('Demo@123');
-    setError('');
   }
 
   async function handleRegisterSubmit(e: React.FormEvent) {
@@ -127,6 +184,7 @@ export default function LoginPage() {
     setRegError('');
     setRegLoading(true);
     try {
+      qc.clear();
       await register({
         name: regForm.name.trim(),
         email: regForm.email.trim(),
@@ -145,236 +203,178 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex bg-surface">
-      {/* Left panel — branding */}
-      <div className="hidden lg:flex lg:w-[50%] bg-sidebar flex-col justify-between p-12 relative overflow-hidden">
-        <div className="relative z-10">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-primary-600 flex items-center justify-center shadow-lg shadow-primary-600/30">
-              <Building2 className="w-5 h-5 text-white" />
+    <div className="min-h-screen flex flex-col lg:flex-row bg-slate-950 font-sans text-gray-100">
+      {/* Left panel — Hero & Single Window Value Showcase */}
+      <div className="lg:w-[48%] bg-gradient-to-br from-slate-900 via-slate-950 to-slate-900 flex flex-col justify-between p-8 sm:p-12 border-b lg:border-b-0 lg:border-r border-slate-800 relative overflow-hidden">
+        {/* Subtle background glow */}
+        <div className="absolute top-0 left-0 w-96 h-96 bg-primary-600/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute bottom-0 right-0 w-96 h-96 bg-blue-600/10 rounded-full blur-3xl pointer-events-none" />
+
+        {/* Top Branding Bar */}
+        <div className="relative z-10 space-y-4">
+          <div className="flex items-center gap-3.5">
+            <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-primary-600 to-emerald-400 flex items-center justify-center shadow-lg shadow-primary-500/20 flex-shrink-0">
+              <Building2 className="w-6 h-6 text-white" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <p className="text-white font-semibold text-base leading-none">Maharashtra Industrial Approvals</p>
-                <span className="text-[10px] bg-primary-500/20 text-primary-300 font-semibold px-2 py-0.5 rounded-full border border-primary-500/30">
-                  PROTOTYPE
+                <span className="text-white font-extrabold text-lg tracking-tight">Udyog Setu</span>
+                <span className="text-[10px] bg-emerald-500/20 text-emerald-300 font-bold px-2 py-0.5 rounded-full border border-emerald-500/30">
+                  Govt of Maharashtra
                 </span>
               </div>
-              <p className="text-gray-400 text-xs mt-1">Single Window System Demonstration (SIH PS 26130)</p>
+              <p className="text-slate-400 text-xs mt-0.5">
+                Maharashtra Industrial Single Window Clearances System
+              </p>
             </div>
           </div>
         </div>
 
-        <div className="space-y-6 relative z-10">
+        {/* Core Value Proposition */}
+        <div className="my-8 space-y-6 relative z-10">
           <div>
-            <h1 className="text-white text-4xl font-extrabold leading-tight tracking-tight">
-              One platform for all<br />
-              <span className="text-primary-400">permissions & approvals</span>
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-800 border border-slate-700 text-amber-300 text-xs font-semibold mb-3">
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>Smart India Hackathon · PS 26130</span>
+            </div>
+            <h1 className="text-white text-3xl sm:text-4xl font-extrabold leading-tight tracking-tight">
+              One Unified Gateway for all <br />
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 via-teal-300 to-blue-400">
+                Statutory Permissions & Clearances
+              </span>
             </h1>
-            <p className="text-gray-400 mt-4 text-sm leading-relaxed max-w-md">
-              Streamline permissions, clearances, land allotments, and statutory compliances across concerned
-              government departments — built on the Maharashtra Single Window framework.
+            <p className="text-slate-400 mt-4 text-xs sm:text-sm leading-relaxed max-w-lg">
+              Next-generation Single Window System for Maharashtra. Eliminates inter-departmental runaround
+              via automated cross-document audits, joint inspection coordination, and RTS statutory SLA enforcement.
             </p>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          {/* 4 Key Pillars */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
             {[
-              { icon: CheckCircle2, title: 'Single Window Scrutiny', desc: 'Unified scrutiny across MIDC, MPCB & DISH' },
-              { icon: Zap,          title: 'Direct Lifecycle Tracking', desc: 'Real-time tracking of decisions & queries' },
-              { icon: Shield,       title: 'Compliance & Renewals', desc: 'Statutory deadline tracking & auto-reminders' },
-              { icon: Building2,    title: 'Specified Time Limits', desc: 'Strict MAITRI deemed approval compliance' },
+              {
+                icon: CheckCircle2,
+                title: 'Single Window Scrutiny',
+                desc: 'Unified CAF across MIDC, MPCB, DISH & Fire Services',
+              },
+              {
+                icon: Zap,
+                title: 'Parallel Clearances',
+                desc: 'Concurrently unlocks independent statutory workflows',
+              },
+              {
+                icon: Shield,
+                title: 'Cross-Document Audit',
+                desc: 'Deterministic consistency check prevents rejections',
+              },
+              {
+                icon: Building2,
+                title: 'Right to Services SLA',
+                desc: 'Live deemed approval countdowns and escalation',
+              },
             ].map(({ icon: Icon, title, desc }) => (
-              <div key={title} className="bg-sidebar-active/80 backdrop-blur-sm rounded-xl p-3.5 border border-sidebar-border/50 shadow-xs">
-                <Icon className="w-4 h-4 text-primary-400 mb-1.5" />
+              <div
+                key={title}
+                className="bg-slate-900/80 backdrop-blur-sm rounded-xl p-3.5 border border-slate-800 hover:border-slate-700 transition-all shadow-sm"
+              >
+                <Icon className="w-4 h-4 text-emerald-400 mb-1.5" />
                 <p className="text-white text-xs font-semibold">{title}</p>
-                <p className="text-gray-400 text-[11px] mt-0.5 leading-snug">{desc}</p>
+                <p className="text-slate-400 text-[11px] mt-0.5 leading-snug">{desc}</p>
               </div>
             ))}
           </div>
         </div>
 
-        <div className="p-3.5 rounded-xl bg-sidebar-active/60 border border-sidebar-border/40 text-[11px] text-gray-400 space-y-1 relative z-10">
-          <p className="font-semibold text-gray-300 flex items-center gap-1.5">
-            <Sparkles className="w-3.5 h-3.5 text-primary-400" />
-            Smart India Hackathon Prototype Notice
-          </p>
-          <p>
-            Problem Statement 26130: Demonstrates single-window industrial approval orchestration, cross-document verification,
-            and role-specific government scrutiny.
-          </p>
+        {/* Footer Notice */}
+        <div className="p-3.5 rounded-xl bg-slate-900/60 border border-slate-800/80 text-[11px] text-slate-400 flex items-center justify-between relative z-10">
+          <span>Grounded in Maharashtra Facilitation Act, 2023</span>
+          <span className="text-emerald-400 font-semibold">100% Deterministic</span>
         </div>
       </div>
 
-      {/* Right panel — login form & role-first selector */}
-      <div className="flex-1 flex items-center justify-center p-6 sm:p-10 bg-surface overflow-y-auto">
-        <div className="w-full max-w-lg space-y-5">
-          {/* Mobile logo */}
-          <div className="flex items-center gap-2 mb-4 lg:hidden">
-            <div className="w-8 h-8 rounded-lg bg-primary-600 flex items-center justify-center">
-              <Building2 className="w-4 h-4 text-white" />
+      {/* Right panel — Instant 1-Click Judge Demo Switcher & Login Form */}
+      <div className="flex-1 flex flex-col justify-center p-6 sm:p-10 lg:p-12 bg-slate-950 overflow-y-auto">
+        <div className="w-full max-w-xl mx-auto space-y-6">
+          {/* Header */}
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-white text-xl sm:text-2xl font-bold tracking-tight">
+                Sign In to Single Window 🏛️
+              </h2>
+              <p className="text-slate-400 text-xs sm:text-sm mt-1">
+                Use 1-Click Judge Demo buttons or enter credentials
+              </p>
             </div>
-            <span className="font-semibold text-gray-900">Industrial Approvals Single Window</span>
+            <button
+              type="button"
+              onClick={() => setShowRegisterModal(true)}
+              className="text-xs font-bold text-emerald-400 hover:text-emerald-300 bg-emerald-950/60 hover:bg-emerald-900/60 border border-emerald-700/50 px-3 py-1.5 rounded-xl transition-colors flex items-center gap-1.5"
+            >
+              <UserPlus className="w-3.5 h-3.5" />
+              <span>Register</span>
+            </button>
           </div>
 
-          <div className="card p-6 sm:p-8 animate-fade-in shadow-sm border border-gray-200">
-            <div>
-              <h2 className="text-gray-900 text-xl font-bold">Sign In to Single Window Portal 👋</h2>
-              <p className="text-gray-500 text-xs mt-1">Select your role category to quickly populate demo credentials or enter custom login</p>
+          {/* 🌟 1-CLICK JUDGE QUICK DEMO ACCESS */}
+          <div className="bg-slate-900/90 rounded-2xl p-4 sm:p-5 border border-slate-800 space-y-3 shadow-xl">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-amber-300 uppercase tracking-wider flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5" />
+                1-Click Judge Demonstration Logins
+              </span>
+              <span className="text-[10px] text-slate-400 font-mono">No typing required</span>
             </div>
 
-            {/* Role-First Category Selector (B0.6) */}
-            <div className="mt-5 space-y-2.5">
-              <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider">
-                Who are you logging in as?
-              </label>
-              <div className="grid grid-cols-2 gap-2">
-                {CATEGORIES.map((cat) => {
-                  const Icon = cat.icon;
-                  const isSelected = category === cat.id;
-                  return (
-                    <button
-                      key={cat.id}
-                      type="button"
-                      onClick={() => {
-                        setCategory(cat.id);
-                        setError('');
-                      }}
-                      className={`p-2.5 text-left rounded-xl border transition-all flex items-start gap-2.5 ${
-                        isSelected
-                          ? 'border-primary-600 bg-primary-50/70 text-primary-950 shadow-xs ring-1 ring-primary-500/30'
-                          : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50'
-                      }`}
-                    >
-                      <div
-                        className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${
-                          isSelected ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-600'
-                        }`}
-                      >
-                        <Icon className="w-3.5 h-3.5" />
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-xs font-bold truncate leading-tight">{cat.label}</p>
-                        <p className="text-[10px] text-gray-500 mt-0.5 truncate">{cat.subtitle}</p>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Revealed Demo Accounts & Role Actions */}
-            <div className="mt-4 p-3 bg-gray-50/90 rounded-xl border border-gray-200/80 space-y-2.5">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-semibold text-gray-600 uppercase tracking-wide">
-                  {category === 'APPLICANT' && 'Applicant / Investor Profile'}
-                  {category === 'REPRESENTATIVE' && 'Representative Delegation Profile'}
-                  {category === 'GOVERNMENT' && 'Concerned Department Authorities'}
-                  {category === 'ADMIN' && 'System Administrator Access'}
-                </span>
-                <span className="text-[10px] text-gray-400">Click to autofill credentials</span>
-              </div>
-
-              {category === 'APPLICANT' && (
-                <div className="space-y-2">
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => fillDemo('entrepreneur@demo.local')}
-                      className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-all ${
-                        email === 'entrepreneur@demo.local'
-                          ? 'bg-primary-600 text-white border-primary-600 shadow-xs'
-                          : 'bg-white text-gray-700 border-gray-200 hover:border-primary-400'
-                      }`}
-                    >
-                      Demo Applicant · entrepreneur@demo.local
-                    </button>
-                  </div>
-                  <div className="pt-2 border-t border-gray-200 flex items-center justify-between">
-                    <span className="text-[11px] text-gray-500">First time applicant or new enterprise?</span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setRegError('');
-                        setShowRegisterModal(true);
-                      }}
-                      className="inline-flex items-center gap-1.5 text-xs font-bold text-primary-700 bg-primary-100 hover:bg-primary-200/80 px-2.5 py-1 rounded-lg transition-colors border border-primary-300"
-                    >
-                      <UserPlus className="w-3.5 h-3.5 text-primary-700" />
-                      Create Applicant Account
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {category === 'REPRESENTATIVE' && (
-                <div className="space-y-2">
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => fillDemo('manager@demo.local')}
-                      className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-all ${
-                        email === 'manager@demo.local'
-                          ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
-                          : 'bg-white text-gray-700 border-gray-200 hover:border-amber-400'
-                      }`}
-                    >
-                      Authorized Representative · manager@demo.local
-                    </button>
-                  </div>
-                  <div className="text-[11px] text-amber-900 bg-amber-50 p-2 rounded-lg border border-amber-200 leading-snug">
-                    <span className="font-bold">Representing: ABC Foods Pvt Ltd.</span> You will access the shared company workspace under a designated Board Resolution & Letter of Authorization.
-                  </div>
-                </div>
-              )}
-
-              {category === 'GOVERNMENT' && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-                  {[
-                    { label: 'MIDC Officer', email: 'officer@demo.local', sub: 'Land Allotment & Infrastructure' },
-                    { label: 'MPCB Officer', email: 'pcb.officer@demo.local', sub: 'Consent to Establish / Operate' },
-                    { label: 'MAITRI Nodal', email: 'nodal@demo.local', sub: 'Single Window Coordination' },
-                    { label: 'Joint Inspector', email: 'inspector@demo.local', sub: 'Designated Site Inspection' },
-                  ].map((officer) => (
-                    <button
-                      key={officer.email}
-                      type="button"
-                      onClick={() => fillDemo(officer.email)}
-                      className={`p-2 text-left rounded-lg border text-xs font-medium transition-all ${
-                        email === officer.email
-                          ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
-                          : 'bg-white text-gray-700 border-gray-200 hover:border-blue-400'
-                      }`}
-                    >
-                      <p className="font-bold truncate">{officer.label}</p>
-                      <p className={`text-[10px] truncate ${email === officer.email ? 'text-blue-100' : 'text-gray-400'}`}>
-                        {officer.email}
-                      </p>
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              {category === 'ADMIN' && (
-                <div className="flex flex-wrap gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {QUICK_DEMO_ACCOUNTS.map((acc) => {
+                const Icon = acc.icon;
+                const isLoggingIn = quickLoginRole === acc.roleKey;
+                return (
                   <button
+                    key={acc.roleKey}
                     type="button"
-                    onClick={() => fillDemo('admin@demo.local')}
-                    className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-all ${
-                      email === 'admin@demo.local'
-                        ? 'bg-purple-600 text-white border-purple-600 shadow-xs'
-                        : 'bg-white text-gray-700 border-gray-200 hover:border-purple-400'
-                    }`}
+                    onClick={() => handleQuickLogin(acc)}
+                    disabled={loading || quickLoginRole !== null}
+                    className="p-3 text-left rounded-xl bg-slate-800/90 hover:bg-slate-850 border border-slate-750 hover:border-slate-650 transition-all flex items-start gap-2.5 group active:scale-98 disabled:opacity-50"
                   >
-                    System Administrator · admin@demo.local
+                    <div
+                      className={`w-8 h-8 rounded-lg bg-gradient-to-br ${acc.color} flex items-center justify-center flex-shrink-0 shadow-sm mt-0.5`}
+                    >
+                      <Icon className="w-4 h-4 text-white" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-1">
+                        <p className="text-xs font-bold text-white truncate leading-tight group-hover:text-emerald-300 transition-colors">
+                          {acc.label}
+                        </p>
+                        <span className="text-[9px] bg-slate-700/80 text-slate-300 px-1 py-0.2 rounded font-medium flex-shrink-0">
+                          {acc.badge}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-300 mt-1 truncate font-medium">{acc.title}</p>
+                      <p className="text-[10px] text-slate-400 mt-0.5 truncate">{acc.sub}</p>
+                    </div>
+                    {isLoggingIn && (
+                      <span className="w-3.5 h-3.5 border-2 border-emerald-400/40 border-t-emerald-400 rounded-full animate-spin flex-shrink-0 mt-1" />
+                    )}
                   </button>
-                </div>
-              )}
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Standard Credentials Form */}
+          <div className="bg-slate-900/60 rounded-2xl p-5 border border-slate-800/80 space-y-4">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">
+                Or Sign In with Registered Account
+              </span>
+              <span className="text-[10px] text-slate-500 font-mono">Demo Password: Demo@123</span>
             </div>
 
-            {/* Login form */}
-            <form onSubmit={handleSubmit} className="mt-5 space-y-3.5">
+            <form onSubmit={handleSubmit} className="space-y-3.5">
               <div>
-                <label className="block text-xs font-bold text-gray-700 mb-1">
+                <label className="block text-xs font-medium text-slate-300 mb-1">
                   Email Address / Registered Identifier
                 </label>
                 <div className="relative">
@@ -382,97 +382,97 @@ export default function LoginPage() {
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder="user@example.com"
+                    placeholder="entrepreneur@demo.local"
                     required
-                    className="input-base text-xs pl-8"
+                    className="w-full px-3.5 py-2.5 pl-10 text-xs bg-slate-950 border border-slate-750 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 rounded-xl text-white placeholder-slate-500 transition-all outline-none"
                   />
-                  <Mail className="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                  <Mail className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
                 </div>
               </div>
 
               <div>
                 <div className="flex items-center justify-between mb-1">
-                  <label className="block text-xs font-bold text-gray-700">Password</label>
-                  <span className="text-[11px] text-gray-400 font-mono">Demo: Demo@123</span>
+                  <label className="block text-xs font-medium text-slate-300">Account Password</label>
+                  <span className="text-[10px] text-slate-500">Encrypted JWT Session</span>
                 </div>
                 <div className="relative">
                   <input
                     type={showPass ? 'text' : 'password'}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Enter account password"
+                    placeholder="Enter password"
                     required
-                    className="input-base text-xs pl-8 pr-9"
+                    className="w-full px-3.5 py-2.5 pl-10 pr-10 text-xs bg-slate-950 border border-slate-750 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 rounded-xl text-white placeholder-slate-500 transition-all outline-none"
                   />
-                  <Lock className="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                  <Lock className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
                   <button
                     type="button"
                     onClick={() => setShowPass(!showPass)}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors"
                   >
-                    {showPass ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                    {showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
               </div>
 
               {error && (
-                <div className="flex items-center gap-2 p-2.5 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700">
-                  <span className="w-4 h-4 rounded-full bg-red-600 text-white text-[10px] flex items-center justify-center flex-shrink-0 font-bold">!</span>
-                  {error}
+                <div className="p-3 bg-red-950/60 border border-red-800 text-xs text-red-300 rounded-xl flex items-center gap-2">
+                  <span className="w-4 h-4 rounded-full bg-red-800 text-white text-[10px] flex items-center justify-center flex-shrink-0 font-bold">
+                    !
+                  </span>
+                  <span>{error}</span>
                 </div>
               )}
 
               <button
                 type="submit"
-                disabled={loading}
-                className="btn-primary w-full justify-center py-2.5 text-xs font-bold shadow-sm"
+                disabled={loading || quickLoginRole !== null}
+                className="w-full py-2.5 px-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold rounded-xl transition-all shadow-md shadow-emerald-900/30 flex items-center justify-center gap-2 disabled:opacity-50"
               >
                 {loading ? (
-                  <span className="flex items-center gap-2">
-                    <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    Authenticating Session…
-                  </span>
+                  <>
+                    <span className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                    <span>Verifying Credentials…</span>
+                  </>
                 ) : (
-                  'Sign In to Dashboard'
+                  <>
+                    <span>Sign In to Dashboard</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </>
                 )}
               </button>
             </form>
-
-            <div className="mt-4 pt-3 border-t border-gray-100 flex items-center justify-between text-[11px] text-gray-400">
-              <span>Smart Single Window Auth</span>
-              <span>Session-Scoped (B0.10)</span>
-            </div>
           </div>
         </div>
       </div>
 
-      {/* Modal: Public Registration for Applicant / Entrepreneur (B0.7) */}
+      {/* Modal: Public Registration for Applicant */}
       {showRegisterModal && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-4 animate-scale-in">
-            <div className="flex items-center justify-between pb-3 border-b border-gray-100">
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-slate-900 text-white rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-4 border border-slate-800 animate-scale-in">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
               <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-primary-100 text-primary-700 flex items-center justify-center">
+                <div className="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
                   <UserPlus className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-gray-900">Create Applicant / Entrepreneur Account</h3>
-                  <p className="text-[11px] text-gray-500">Register your business entity for Maharashtra single-window approvals</p>
+                  <h3 className="text-sm font-bold text-white">Register Enterprise Account</h3>
+                  <p className="text-[11px] text-slate-400">
+                    Single-Window clearance access for industrial promoters
+                  </p>
                 </div>
               </div>
               <button
                 onClick={() => setShowRegisterModal(false)}
-                className="p-1 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100"
+                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <form onSubmit={handleRegisterSubmit} className="space-y-3">
+            <form onSubmit={handleRegisterSubmit} className="space-y-3 text-xs">
               <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1">
-                  Full Name of Authorized Person *
-                </label>
+                <label className="block text-slate-300 font-medium mb-1">Full Name of Promoter *</label>
                 <div className="relative">
                   <input
                     type="text"
@@ -480,16 +480,14 @@ export default function LoginPage() {
                     value={regForm.name}
                     onChange={(e) => setRegForm({ ...regForm, name: e.target.value })}
                     placeholder="e.g. Ramesh Kulkarni"
-                    className="input-base text-xs pl-8"
+                    className="w-full px-3 py-2 pl-9 bg-slate-950 border border-slate-750 focus:border-emerald-500 rounded-lg text-white outline-none"
                   />
-                  <User className="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                  <User className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1">
-                  Official Email Address *
-                </label>
+                <label className="block text-slate-300 font-medium mb-1">Official Email Address *</label>
                 <div className="relative">
                   <input
                     type="email"
@@ -497,16 +495,14 @@ export default function LoginPage() {
                     value={regForm.email}
                     onChange={(e) => setRegForm({ ...regForm, email: e.target.value })}
                     placeholder="ramesh@myenterprise.in"
-                    className="input-base text-xs pl-8"
+                    className="w-full px-3 py-2 pl-9 bg-slate-950 border border-slate-750 focus:border-emerald-500 rounded-lg text-white outline-none"
                   />
-                  <Mail className="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                  <Mail className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1">
-                  Account Password *
-                </label>
+                <label className="block text-slate-300 font-medium mb-1">Account Password *</label>
                 <div className="relative">
                   <input
                     type="password"
@@ -514,17 +510,15 @@ export default function LoginPage() {
                     minLength={6}
                     value={regForm.password}
                     onChange={(e) => setRegForm({ ...regForm, password: e.target.value })}
-                    placeholder="Choose a secure password"
-                    className="input-base text-xs pl-8"
+                    placeholder="Minimum 6 characters"
+                    className="w-full px-3 py-2 pl-9 bg-slate-950 border border-slate-750 focus:border-emerald-500 rounded-lg text-white outline-none"
                   />
-                  <Lock className="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                  <Lock className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1">
-                  Legal Entity / Undertaking Name *
-                </label>
+                <label className="block text-slate-300 font-medium mb-1">Legal Entity / Undertaking Name *</label>
                 <div className="relative">
                   <input
                     type="text"
@@ -532,42 +526,46 @@ export default function LoginPage() {
                     value={regForm.entity_name}
                     onChange={(e) => setRegForm({ ...regForm, entity_name: e.target.value })}
                     placeholder="e.g. Sahyadri Bio-Tech Industries Pvt Ltd"
-                    className="input-base text-xs pl-8"
+                    className="w-full px-3 py-2 pl-9 bg-slate-950 border border-slate-750 focus:border-emerald-500 rounded-lg text-white outline-none"
                   />
-                  <Factory className="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                  <Factory className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">Entity Constitution</label>
+                  <label className="block text-slate-300 font-medium mb-1">Constitution</label>
                   <select
                     value={regForm.entity_type}
                     onChange={(e) => setRegForm({ ...regForm, entity_type: e.target.value })}
-                    className="input-base text-xs py-1.5"
+                    className="w-full px-2 py-2 bg-slate-950 border border-slate-750 rounded-lg text-white outline-none text-xs"
                   >
                     {ENTITY_TYPES.map((t) => (
-                      <option key={t} value={t}>{t}</option>
+                      <option key={t} value={t}>
+                        {t}
+                      </option>
                     ))}
                   </select>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">Industry Sector</label>
+                  <label className="block text-slate-300 font-medium mb-1">Industry Sector</label>
                   <select
                     value={regForm.sector}
                     onChange={(e) => setRegForm({ ...regForm, sector: e.target.value })}
-                    className="input-base text-xs py-1.5"
+                    className="w-full px-2 py-2 bg-slate-950 border border-slate-750 rounded-lg text-white outline-none text-xs"
                   >
                     {SECTOR_OPTIONS.map((s) => (
-                      <option key={s} value={s}>{s}</option>
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
                     ))}
                   </select>
                 </div>
               </div>
 
               {regError && (
-                <div className="p-2.5 rounded-lg bg-red-50 border border-red-200 text-xs text-red-700">
+                <div className="p-2.5 rounded-lg bg-red-950/60 border border-red-800 text-xs text-red-300">
                   {regError}
                 </div>
               )}
@@ -576,22 +574,25 @@ export default function LoginPage() {
                 <button
                   type="button"
                   onClick={() => setShowRegisterModal(false)}
-                  className="btn-secondary text-xs py-2 px-3"
+                  className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={regLoading}
-                  className="btn-primary text-xs py-2 px-4 shadow-sm"
+                  className="px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 font-bold text-white transition-colors"
                 >
-                  {regLoading ? 'Registering...' : 'Create Account & Continue'}
+                  {regLoading ? 'Registering…' : 'Create Account'}
                 </button>
               </div>
             </form>
           </div>
         </div>
       )}
+
+      {/* Floating Interactive Tour Trigger */}
+      <SiteTourGuide />
     </div>
   );
 }

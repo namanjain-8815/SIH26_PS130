@@ -24,6 +24,7 @@ import {
   Layers,
   Sparkles,
   ExternalLink,
+  ArrowLeft,
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -183,6 +184,26 @@ export function CommonApplicationFormView({
 
   return (
     <div className="space-y-6">
+      {/* Return Actions Bar */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <Link
+          href={`/app/applications/${applicationId}`}
+          className="inline-flex items-center gap-1.5 text-xs font-semibold text-gray-700 hover:text-gray-900 bg-white hover:bg-gray-100 border border-gray-200 px-3 py-1.5 rounded-lg transition-colors shadow-xs"
+        >
+          <ArrowLeft className="w-3.5 h-3.5" />
+          <span>Back to Application Overview</span>
+        </Link>
+
+        <div className="flex items-center gap-3">
+          <Link
+            href="/app/approvals"
+            className="text-xs font-semibold text-primary-700 hover:text-primary-800 hover:underline flex items-center gap-1"
+          >
+            <span>Return to Permissions Roadmap →</span>
+          </Link>
+        </div>
+      </div>
+
       {/* Top Banner: Workflow Header & Lock State */}
       <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-xs">
         <div className="flex flex-wrap items-center justify-between gap-4">

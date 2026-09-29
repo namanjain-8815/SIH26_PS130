@@ -72,7 +72,7 @@ export function CrossDocumentConsistencyCard({
           <div>
             <div className="flex items-center gap-2">
               <span className="text-[10px] uppercase font-bold tracking-wider text-gray-500 bg-gray-100 px-2 py-0.5 rounded">
-                Milestone P0.5 · Local Deterministic Audit
+                Automated Cross-Document Verification Audit
               </span>
               <span
                 className={`text-[10px] font-bold px-2 py-0.5 rounded ${

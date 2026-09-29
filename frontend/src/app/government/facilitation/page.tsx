@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { facilitationApi } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
@@ -67,6 +67,14 @@ export default function GovernmentFacilitationQueuePage() {
   // Coordination note state
   const [noteText, setNoteText] = useState('');
   const [isInternal, setIsInternal] = useState(false);
+  const detailPaneRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (selectedId && detailPaneRef.current) {
+      detailPaneRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      detailPaneRef.current.scrollTop = 0;
+    }
+  }, [selectedId]);
 
   // Resolution modal state
   const [isResolveModalOpen, setIsResolveModalOpen] = useState(false);
@@ -321,7 +329,7 @@ export default function GovernmentFacilitationQueuePage() {
 
         {/* Right Detail Pane */}
         {selectedId && selected ? (
-          <div className="hidden md:flex flex-1 flex-col overflow-y-auto bg-white p-6">
+          <div ref={detailPaneRef} className="hidden md:flex flex-1 flex-col overflow-y-auto bg-white p-6 sticky top-2 max-h-[calc(100vh-8rem)] self-start rounded-xl border border-gray-200 shadow-md">
             {/* Header info */}
             <div className="pb-4 border-b border-gray-200 flex items-start justify-between gap-4">
               <div>

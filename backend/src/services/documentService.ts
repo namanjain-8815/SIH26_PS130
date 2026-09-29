@@ -7,19 +7,45 @@ import { recordAudit } from './auditService';
 export const storage = new SupabaseStorageAdapter();
 
 export async function listDocuments(projectId: string) {
-  const docs = await prisma.document.findMany({
+  const project = await prisma.project.findUnique({ where: { id: projectId } });
+  const orgId = project?.org_id;
+
+  const projectDocs = await prisma.document.findMany({
     where: { project_id: projectId },
     orderBy: { created_at: 'desc' },
   });
 
-  // Enrich each document with reuse count (how many applications reference it)
-  const reuseCountsRaw = await prisma.applicationDocument.groupBy({
-    by: ['document_id'],
-    _count: { document_id: true },
-    where: { document_id: { in: docs.map((d) => d.id) } },
-  });
+  let orgDocs: typeof projectDocs = [];
+  if (orgId) {
+    orgDocs = await prisma.document.findMany({
+      where: { org_id: orgId },
+      orderBy: { created_at: 'desc' },
+    });
+  }
 
-  const reuseMap = new Map(reuseCountsRaw.map((r) => [r.document_id, r._count.document_id]));
+  // Deduplicate by document id
+  const docsMap = new Map<string, (typeof projectDocs)[0]>();
+  for (const d of [...projectDocs, ...orgDocs]) {
+    docsMap.set(d.id, d);
+  }
+  const uniqueDocs = Array.from(docsMap.values());
+
+  // Enrich each document with reuse count (how many applications reference it)
+  const reuseMap = new Map<string, number>();
+  if (uniqueDocs.length > 0) {
+    try {
+      const reuseCountsRaw = await prisma.applicationDocument.groupBy({
+        by: ['document_id'],
+        _count: { document_id: true },
+        where: { document_id: { in: uniqueDocs.map((d) => d.id) } },
+      });
+      for (const r of reuseCountsRaw) {
+        reuseMap.set(r.document_id, r._count.document_id);
+      }
+    } catch {
+      // Fallback if groupBy encounters an issue
+    }
+  }
 
   // Retrieve cached extractions from ProjectAttribute
   const extractionAttrs = await prisma.projectAttribute.findMany({
@@ -37,17 +63,18 @@ export async function listDocuments(projectId: string) {
 
   // Check physical file availability in storage
   const availabilityEntries = await Promise.all(
-    docs.map(async (doc) => {
-      const isAvailable = doc.file_url ? await storage.exists(doc.file_url) : false;
+    uniqueDocs.map(async (doc) => {
+      const isAvailable = doc.file_url ? await storage.exists(doc.file_url) : true;
       return [doc.id, isAvailable] as const;
     })
   );
   const availabilityMap = new Map(availabilityEntries);
 
-  return docs.map((doc) => {
+  return uniqueDocs.map((doc) => {
     const ext = extractionMap.get(doc.id);
     return {
       ...doc,
+      scope: doc.project_id ? 'SITE_SPECIFIC' : 'ORGANIZATION_COMMON',
       is_file_available: availabilityMap.get(doc.id) ?? false,
       reuse_count: reuseMap.get(doc.id) ?? 0,
       extracted_field_count: ext ? ext.field_count : 0,

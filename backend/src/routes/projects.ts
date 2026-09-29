@@ -10,7 +10,11 @@ const router = Router();
 
 router.get('/projects', requireAuth, async (req, res, next) => {
   try {
-    res.json(await projectService.listProjects(req.query.org_id as string | undefined));
+    const orgId =
+      req.user?.role === 'ENTREPRENEUR' || req.user?.role === 'MANAGER'
+        ? (req.user.org_id || undefined)
+        : (req.query.org_id as string | undefined);
+    res.json(await projectService.listProjects(orgId));
   } catch (err) {
     next(err);
   }

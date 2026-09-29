@@ -37,6 +37,7 @@ const DEMO_PROJECT_ID = 'proj-abc-foods-001';
 export default function DocumentsPage() {
   const qc = useQueryClient();
   const [viewMode, setViewMode] = useState<'vault' | 'detail-centre' | 'guidance'>('vault');
+  const [scopeFilter, setScopeFilter] = useState<'ALL' | 'ORGANIZATION_COMMON' | 'SITE_SPECIFIC'>('ALL');
   const [showMissing, setShowMissing] = useState(false);
   const [showConsistency, setShowConsistency] = useState(false);
 
@@ -249,14 +250,19 @@ export default function DocumentsPage() {
     },
   });
 
-  const documents = docs ?? [];
+  const allDocuments = docs ?? [];
+  const documents = allDocuments.filter((d: any) => {
+    if (scopeFilter === 'ALL') return true;
+    if (scopeFilter === 'ORGANIZATION_COMMON') return d.scope === 'ORGANIZATION_COMMON';
+    return d.scope !== 'ORGANIZATION_COMMON';
+  });
 
   const stats = {
-    total: documents.length,
-    verified: documents.filter((d) => d.verification_status === 'VERIFIED').length,
-    pending: documents.filter((d) => d.verification_status === 'PENDING').length,
-    expiring: documents.filter((d) => d.is_expiring_soon).length,
-    expired: documents.filter((d) => d.is_expired).length,
+    total: allDocuments.length,
+    verified: allDocuments.filter((d) => d.verification_status === 'VERIFIED').length,
+    pending: allDocuments.filter((d) => d.verification_status === 'PENDING').length,
+    expiring: allDocuments.filter((d) => d.is_expiring_soon).length,
+    expired: allDocuments.filter((d) => d.is_expired).length,
   };
 
   return (
@@ -424,6 +430,58 @@ export default function DocumentsPage() {
             </div>
           )}
 
+          {/* Scope Filter Tabs */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-1 pb-1">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <button
+                type="button"
+                onClick={() => setScopeFilter('ALL')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                  scopeFilter === 'ALL'
+                    ? 'bg-slate-900 text-white shadow-xs'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                All Documents ({allDocuments.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setScopeFilter('ORGANIZATION_COMMON')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${
+                  scopeFilter === 'ORGANIZATION_COMMON'
+                    ? 'bg-emerald-700 text-white shadow-xs'
+                    : 'bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-200'
+                }`}
+              >
+                <span>Enterprise Common</span>
+                <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-full bg-emerald-200/50">
+                  {allDocuments.filter((d: any) => d.scope === 'ORGANIZATION_COMMON').length}
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setScopeFilter('SITE_SPECIFIC')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${
+                  scopeFilter === 'SITE_SPECIFIC'
+                    ? 'bg-blue-700 text-white shadow-xs'
+                    : 'bg-blue-50 text-blue-800 hover:bg-blue-100 border border-blue-200'
+                }`}
+              >
+                <span>Site Specific Exhibits</span>
+                <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-full bg-blue-200/50">
+                  {allDocuments.filter((d: any) => d.scope !== 'ORGANIZATION_COMMON').length}
+                </span>
+              </button>
+            </div>
+            <p className="text-[11px] text-gray-500 hidden sm:block">
+              {scopeFilter === 'ORGANIZATION_COMMON'
+                ? 'Shared across all enterprise investment proposals'
+                : scopeFilter === 'SITE_SPECIFIC'
+                ? 'Site-specific exhibits for this facility'
+                : 'All documents in vault'}
+            </p>
+          </div>
+
           {/* Documents table */}
           <div className="card overflow-hidden">
             {isLoading && (
@@ -502,8 +560,8 @@ export default function DocumentsPage() {
 
       {/* MODAL: Upload Document */}
       {showUploadModal && (
-        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6 space-y-4">
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6 space-y-4 my-auto max-h-[90vh] overflow-y-auto animate-scale-in">
             <div className="flex items-center justify-between pb-3 border-b border-gray-100">
               <div>
                 <h3 className="text-sm font-bold text-gray-900">Upload to Document Vault</h3>
@@ -604,8 +662,8 @@ export default function DocumentsPage() {
 
       {/* MODAL: Replace Document */}
       {replaceDocId && (
-        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6 space-y-4">
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6 space-y-4 my-auto max-h-[90vh] overflow-y-auto animate-scale-in">
             <div className="flex items-center justify-between pb-3 border-b border-gray-100">
               <div>
                 <h3 className="text-sm font-bold text-gray-900">Upload Document Replacement</h3>
@@ -750,8 +808,8 @@ export default function DocumentsPage() {
 
       {/* MODAL: Document Details & Reuse View */}
       {viewDocDetailId && docDetail && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full p-6 space-y-4 max-h-[92vh] overflow-y-auto animate-scale-in">
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full p-6 space-y-4 my-auto max-h-[92vh] overflow-y-auto animate-scale-in">
             {/* Header */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-gray-100">
               <div className="min-w-0">
@@ -781,8 +839,10 @@ export default function DocumentsPage() {
                     <a
                       href={documentsApi.getFileUrl(docDetail.id)}
                       download={docDetail.file_name}
+                      target="_blank"
+                      rel="noopener noreferrer"
                       className="btn-secondary text-xs py-1.5 px-2.5 flex items-center gap-1"
-                      title="Download File"
+                      title="Download File in New Tab"
                     >
                       <Download className="w-3.5 h-3.5 text-gray-600" />
                     </a>
@@ -948,6 +1008,20 @@ export default function DocumentsPage() {
           </div>
         </div>
       )}
+
+      {/* Floating Action Trigger for Upload (stays visible at any scroll depth) */}
+      <button
+        type="button"
+        onClick={() => {
+          setUploadDocType('');
+          setShowUploadModal(true);
+        }}
+        className="fixed bottom-6 right-6 z-40 flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-full shadow-2xl hover:shadow-blue-500/40 transition-all duration-200 border border-blue-400/40 group active:scale-95"
+        title="Upload Document to Vault (Always available at any scroll depth)"
+      >
+        <Upload className="w-4 h-4 text-white group-hover:-translate-y-0.5 transition-transform" />
+        <span>Upload Document</span>
+      </button>
     </div>
   );
 }
@@ -967,6 +1041,8 @@ function DocumentRow({
   onDelete: () => void;
   isReExtracting: boolean;
 }) {
+  const isOrgCommon = (doc as any).scope === 'ORGANIZATION_COMMON';
+
   return (
     <tr className="hover:bg-gray-50 transition-colors group">
       <td className="px-4 py-3">
@@ -975,7 +1051,14 @@ function DocumentRow({
             <FileText className="w-4 h-4 text-blue-500" />
           </div>
           <div className="min-w-0">
-            <p className="text-sm font-medium text-gray-900 truncate">{doc.document_type}</p>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <p className="text-sm font-medium text-gray-900 truncate">{doc.document_type}</p>
+              {isOrgCommon && (
+                <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-emerald-50 text-emerald-800 border border-emerald-200" title="Organization-wide common document">
+                  Common
+                </span>
+              )}
+            </div>
             <p className="text-xs text-gray-400 font-mono truncate">{doc.file_name}</p>
           </div>
         </div>

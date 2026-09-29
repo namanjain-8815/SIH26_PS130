@@ -29,4 +29,16 @@ router.get('/me', requireAuth, async (req, res, next) => {
   }
 });
 
+router.post('/update-password', requireAuth, async (req, res, next) => {
+  try {
+    const { current_password, new_password } = req.body as {
+      current_password: string;
+      new_password: string;
+    };
+    res.json(await authService.updatePassword(req.user!.id, current_password, new_password));
+  } catch (err) {
+    next(err);
+  }
+});
+
 export default router;

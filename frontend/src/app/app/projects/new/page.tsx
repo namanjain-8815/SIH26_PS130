@@ -23,15 +23,66 @@ import {
   Factory,
   Layers,
   Sparkles,
+  UserCheck,
+  Edit3,
+  X,
+  CheckSquare,
+  Square,
+  FileSpreadsheet,
+  Users,
 } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
 import Link from 'next/link';
 
+const SCHEME_OPTIONS = [
+  {
+    id: 'psi_2019',
+    name: 'Package Scheme of Incentives (PSI) 2019 (Govt of Maharashtra)',
+    authority: 'Directorate of Industries, Maharashtra',
+    benefits: 'Up to 100% Stamp Duty Exemption, Electricity Duty Waiver for 7-10 yrs, Industrial Promotion Subsidy (IPS) linked to SGST.',
+    tag: 'Flagship State Scheme',
+  },
+  {
+    id: 'msme_interest_subsidy',
+    name: 'Maharashtra State MSME Interest Subsidy Scheme',
+    authority: 'Industries, Energy & Labour Dept',
+    benefits: '5% interest subsidy on term loans for plant & machinery; capital subsidy up to ₹25 Lakhs for green technology / cleaner production.',
+    tag: 'MSME Support',
+  },
+  {
+    id: 'pm_kisan_sampada',
+    name: 'Pradhan Mantri Kisan Sampada Yojana (MoFPI / GoI)',
+    authority: 'Ministry of Food Processing Industries',
+    benefits: 'Capital investment subsidy up to 35% (max ₹10 Cr) for agro-processing clusters, integrated cold chain & value addition.',
+    tag: 'Agro & Food Processing',
+  },
+  {
+    id: 'cmegp',
+    name: 'Chief Minister Employment Generation Programme (CMEGP)',
+    authority: 'Directorate of Industries / MSSDS',
+    benefits: 'Margin money subsidy up to 25% for micro & small manufacturing units creating local employment opportunities.',
+    tag: 'Employment Linked',
+  },
+  {
+    id: 'green_power_rebate',
+    name: 'Industrial Electricity Tariff Concession Scheme',
+    authority: 'MSEDCL / Energy Dept (GoM)',
+    benefits: '₹1.00 per unit tariff concession for units in Vidarbha, Marathwada, and D/D+ industrial classification zones.',
+    tag: 'Power & Utility Subsidy',
+  },
+];
+
 interface WizardFormData {
-  // Step 1: Entity
+  // Step 1: Entity & Authority Representative
   entity_name: string;
   entity_type: string;
   entity_sector: string;
+  has_authority_rep: boolean;
+  rep_name: string;
+  rep_designation: string;
+  rep_email: string;
+  rep_phone: string;
+  rep_auth_doc_ref: string;
   // Step 2: Project Proposal
   name: string;
   type: string;
@@ -45,7 +96,7 @@ interface WizardFormData {
   industrial_area: string;
   industrial_area_name: string;
   address: string;
-  // Step 4: Regulatory Attributes
+  // Step 4: Regulatory Attributes & Applicable Schemes
   pollution_category: string;
   water_usage_kld: string;
   power_requirement_kva: string;
@@ -54,12 +105,24 @@ interface WizardFormData {
   product_type: string;
   waste_type: string;
   contract_labour: string;
+  selected_schemes: string[];
+  // Baseline CAF Fields
+  caf_pan: string;
+  caf_gstin: string;
+  caf_cin: string;
+  caf_director_din: string;
 }
 
 const INITIAL_DATA: WizardFormData = {
   entity_name: 'Sahyadri Agro Industries Pvt Ltd',
   entity_type: 'Private Limited Company',
   entity_sector: 'Food Processing',
+  has_authority_rep: true,
+  rep_name: 'Rajesh Sharma',
+  rep_designation: 'Director & Authorized Signatory',
+  rep_email: 'rajesh.sharma@sahyadriagro.in',
+  rep_phone: '+91 98201 12345',
+  rep_auth_doc_ref: 'Board Resolution BR-2026-44',
   name: 'Sahyadri Integrated Agro Processing Facility',
   type: 'Manufacturing',
   sector: 'Food Processing',
@@ -79,6 +142,11 @@ const INITIAL_DATA: WizardFormData = {
   product_type: 'processed_food_and_beverages',
   waste_type: 'effluent',
   contract_labour: 'yes',
+  selected_schemes: ['psi_2019', 'msme_interest_subsidy', 'pm_kisan_sampada'],
+  caf_pan: 'AAACS1234F',
+  caf_gstin: '27AAACS1234F1Z5',
+  caf_cin: 'U15400MH2024PTC123456',
+  caf_director_din: '08123456',
 };
 
 const STEPS = [
@@ -97,6 +165,7 @@ export default function NewProjectWizardPage() {
   const [formData, setFormData] = useState<WizardFormData>(INITIAL_DATA);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
+  const [isEditingBaselineModalOpen, setIsEditingBaselineModalOpen] = useState<boolean>(false);
   const [createdProjectId, setCreatedProjectId] = useState<string | null>(null);
   const [analysisResult, setAnalysisResult] = useState<RegulatoryAnalysisResult | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -168,6 +237,15 @@ export default function NewProjectWizardPage() {
           contract_labour: formData.contract_labour,
           industrial_area: formData.industrial_area,
           state: 'maharashtra',
+          representative_name: formData.has_authority_rep ? formData.rep_name : (user?.name || ''),
+          representative_designation: formData.has_authority_rep ? formData.rep_designation : 'Authorized Signatory',
+          representative_email: formData.has_authority_rep ? formData.rep_email : (user?.email || ''),
+          representative_phone: formData.has_authority_rep ? formData.rep_phone : '',
+          representative_auth_letter: formData.has_authority_rep ? formData.rep_auth_doc_ref : '',
+          selected_schemes: formData.selected_schemes.join(','),
+          pan: formData.caf_pan,
+          gstin: formData.caf_gstin,
+          cin: formData.caf_cin,
         };
 
         await projectsApi.saveAttributes(project.id, attributesPayload);
@@ -354,15 +432,124 @@ export default function NewProjectWizardPage() {
 
               <div>
                 <label className="block text-xs font-semibold text-gray-700 mb-1">
-                  Authorized Signatory / Representative
+                  Primary Account Holder
                 </label>
                 <div className="flex items-center gap-2 p-2.5 bg-gray-50 border border-gray-200 rounded-lg text-xs text-gray-700">
                   <ShieldCheck className="w-4 h-4 text-emerald-600 flex-shrink-0" />
                   <span className="font-medium text-gray-900">{user?.name ?? 'Authorized Investor'}</span>
                   <span className="text-gray-400">({user?.email ?? 'verified'})</span>
                 </div>
-                <p className="text-[11px] text-gray-400 mt-1">Authenticated user acting on behalf of the applicant</p>
+                <p className="text-[11px] text-gray-400 mt-1">Authenticated user acting on behalf of applicant</p>
               </div>
+            </div>
+
+            {/* Authority Representative Section */}
+            <div className="pt-5 border-t border-gray-100 space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <UserCheck className="w-4 h-4 text-primary-600" />
+                  <div>
+                    <h3 className="text-sm font-bold text-gray-900">Authority Representative / Authorized Signatory</h3>
+                    <p className="text-xs text-gray-500">Designate an empowered representative to handle statutory applications, inspections & notices.</p>
+                  </div>
+                </div>
+                <label className="flex items-center gap-2 text-xs font-semibold text-gray-700 cursor-pointer bg-primary-50 hover:bg-primary-100/70 text-primary-900 px-3 py-1.5 rounded-lg border border-primary-200 transition-colors">
+                  <input
+                    type="checkbox"
+                    checked={formData.has_authority_rep}
+                    onChange={(e) => updateField('has_authority_rep', e.target.checked)}
+                    className="w-4 h-4 text-primary-600 rounded border-gray-300"
+                  />
+                  <span>Designate Authority Representative</span>
+                </label>
+              </div>
+
+              {formData.has_authority_rep ? (
+                <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-4">
+                  <div className="flex items-center justify-between text-xs pb-2 border-b border-slate-200">
+                    <p className="font-semibold text-slate-800">
+                      Empowered Representative Details (Under Section 7, Maharashtra Single Window Act)
+                    </p>
+                    <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded">
+                      Statutory Signatory
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-700 mb-1">
+                        Representative Full Name <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        className="input-base"
+                        value={formData.rep_name}
+                        onChange={(e) => updateField('rep_name', e.target.value)}
+                        placeholder="e.g. Rajesh Sharma"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-700 mb-1">
+                        Designation / Legal Standing <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        className="input-base"
+                        value={formData.rep_designation}
+                        onChange={(e) => updateField('rep_designation', e.target.value)}
+                        placeholder="e.g. Director & Authorized Signatory"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-700 mb-1">
+                        Official Email ID <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="email"
+                        className="input-base"
+                        value={formData.rep_email}
+                        onChange={(e) => updateField('rep_email', e.target.value)}
+                        placeholder="e.g. rajesh.sharma@sahyadriagro.in"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-700 mb-1">
+                        Contact Mobile Number <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="tel"
+                        className="input-base"
+                        value={formData.rep_phone}
+                        onChange={(e) => updateField('rep_phone', e.target.value)}
+                        placeholder="e.g. +91 98201 12345"
+                      />
+                    </div>
+
+                    <div className="md:col-span-2">
+                      <label className="block text-xs font-semibold text-gray-700 mb-1">
+                        Authorization Document / Board Resolution Reference
+                      </label>
+                      <input
+                        type="text"
+                        className="input-base"
+                        value={formData.rep_auth_doc_ref}
+                        onChange={(e) => updateField('rep_auth_doc_ref', e.target.value)}
+                        placeholder="e.g. Board Resolution BR-2026-44 / Power of Attorney Dated 12-Feb-2026"
+                      />
+                      <p className="text-[11px] text-gray-400 mt-1">
+                        Authorizes representative to submit CAF, reply to scrutiny queries, and accept deemed approvals.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg text-xs text-gray-600">
+                  Defaulting to primary account holder: <strong className="text-gray-900">{user?.name}</strong> ({user?.email}) as the sole authorized signatory.
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -509,7 +696,7 @@ export default function NewProjectWizardPage() {
                 <input
                   type="text"
                   className="input-base bg-gray-50"
-                  value="Maharashtra (MAITRI / NSWS State Portal)"
+                  value="Maharashtra (Udyog Setu / Single Window Portal)"
                   readOnly
                 />
               </div>
@@ -711,6 +898,130 @@ export default function NewProjectWizardPage() {
                   onChange={(e) => updateField('product_type', e.target.value)}
                   placeholder="e.g. Fruit Pulp, Puree and Frozen Vegetables"
                 />
+              </div>
+            </div>
+
+            {/* Applicable Schemes & Subsidies Selection */}
+            <div className="pt-6 border-t border-gray-100 space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                    <Gift className="w-4 h-4 text-purple-600" />
+                    Select Applicable Government Schemes & Subsidies
+                  </h3>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Select the industrial schemes you plan to claim. These will be integrated into your proposal roadmap.
+                  </p>
+                </div>
+                <span className="text-xs font-semibold text-purple-700 bg-purple-50 px-2.5 py-1 rounded-full border border-purple-200">
+                  {formData.selected_schemes.length} Schemes Selected
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {SCHEME_OPTIONS.map((scheme) => {
+                  const isSelected = formData.selected_schemes.includes(scheme.id);
+                  return (
+                    <div
+                      key={scheme.id}
+                      onClick={() => {
+                        const next = isSelected
+                          ? formData.selected_schemes.filter((id) => id !== scheme.id)
+                          : [...formData.selected_schemes, scheme.id];
+                        updateField('selected_schemes', next);
+                      }}
+                      className={`p-3.5 rounded-xl border transition-all cursor-pointer ${
+                        isSelected
+                          ? 'border-purple-500 bg-purple-50/40 ring-1 ring-purple-400 shadow-xs'
+                          : 'border-gray-200 bg-white hover:border-gray-300'
+                      }`}
+                    >
+                      <div className="flex items-start gap-2.5">
+                        <div className="mt-0.5 text-purple-600">
+                          {isSelected ? (
+                            <CheckSquare className="w-4 h-4 text-purple-600" />
+                          ) : (
+                            <Square className="w-4 h-4 text-gray-400" />
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-1 mb-1">
+                            <span className="text-[10px] font-bold text-purple-700 bg-purple-100/80 px-2 py-0.5 rounded">
+                              {scheme.tag}
+                            </span>
+                            <span className="text-[10px] text-gray-400 truncate">{scheme.authority}</span>
+                          </div>
+                          <p className="text-xs font-bold text-gray-900 leading-snug">{scheme.name}</p>
+                          <p className="text-[11px] text-gray-600 mt-1 leading-relaxed">{scheme.benefits}</p>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Prescribed Common Application Forms (CAF) & Auto-Used Baseline Data */}
+            <div className="pt-6 border-t border-gray-100 space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                    <FileSpreadsheet className="w-4 h-4 text-primary-600" />
+                    Prescribed Single-Window Forms & Auto-Used Baseline Data
+                  </h3>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Common Application Form (CAF) baseline parameters automatically feed into statutory clearance forms.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsEditingBaselineModalOpen(true)}
+                  className="btn-secondary text-xs flex items-center gap-1.5 border-primary-200 text-primary-700 hover:bg-primary-50 cursor-pointer"
+                >
+                  <Edit3 className="w-3.5 h-3.5" />
+                  <span>Edit Auto-Used Data</span>
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-bold text-slate-800">Form CAF-1: Entity Profile</span>
+                    <span className="text-[10px] bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded font-bold">Auto-Synced</span>
+                  </div>
+                  <p className="text-[11px] text-slate-600 leading-relaxed">
+                    PAN: <span className="font-mono font-semibold">{formData.caf_pan}</span> · GSTIN: <span className="font-mono font-semibold">{formData.caf_gstin}</span>
+                  </p>
+                  <p className="text-[10px] text-slate-500 truncate">
+                    Authorized Signatory: <strong className="text-slate-700">{formData.has_authority_rep ? formData.rep_name : user?.name}</strong>
+                  </p>
+                </div>
+
+                <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-bold text-slate-800">Form U-1: Statutory Utilities</span>
+                    <span className="text-[10px] bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded font-bold">Auto-Synced</span>
+                  </div>
+                  <p className="text-[11px] text-slate-600 leading-relaxed">
+                    Power: <span className="font-bold text-slate-900">{formData.power_requirement_kva} kVA</span> · Water: <span className="font-bold text-slate-900">{formData.water_usage_kld} KLD</span>
+                  </p>
+                  <p className="text-[10px] text-slate-500">
+                    Effluent Classification: <span className="capitalize font-medium">{formData.waste_type}</span>
+                  </p>
+                </div>
+
+                <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-bold text-slate-800">Form L-1: Spatial Allocation</span>
+                    <span className="text-[10px] bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded font-bold">Auto-Synced</span>
+                  </div>
+                  <p className="text-[11px] text-slate-600 leading-relaxed">
+                    Land Area: <span className="font-bold text-slate-900">{formData.land_area_sqm} sq.m</span>
+                  </p>
+                  <p className="text-[10px] text-slate-500 truncate">
+                    Zone: <span className="font-semibold text-slate-700">{formData.industrial_area_name || formData.industrial_area}</span>
+                  </p>
+                </div>
               </div>
             </div>
           </div>
@@ -971,6 +1282,149 @@ export default function NewProjectWizardPage() {
           )}
         </div>
       </div>
+
+      {/* Floating Modal for Editing Baseline CAF Auto-Used Data */}
+      {isEditingBaselineModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full p-6 my-auto max-h-[90vh] overflow-y-auto border border-gray-200 animate-scale-in space-y-5">
+            <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+              <div className="flex items-center gap-2">
+                <Edit3 className="w-5 h-5 text-primary-600" />
+                <div>
+                  <h3 className="text-base font-bold text-gray-900">Edit Common Application Form (CAF) Baseline Data</h3>
+                  <p className="text-xs text-gray-500">Floating Window · Changes instantly propagate to all single-window forms</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsEditingBaselineModalOpen(false)}
+                className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors font-bold text-sm cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-4 text-xs">
+              <div className="p-3 bg-blue-50/80 border border-blue-200 rounded-xl text-blue-900">
+                <p className="font-bold">Statutory Single-Source Guarantee</p>
+                <p className="text-[11px] text-blue-700 mt-0.5">
+                  Values edited here synchronize immediately with your undertaking master profile and populate all subsequent clearance forms.
+                </p>
+              </div>
+
+              <div>
+                <h4 className="font-bold text-gray-900 uppercase tracking-wide mb-2">Statutory Identifiers</h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-semibold text-gray-700 mb-1">Entity PAN Number</label>
+                    <input
+                      type="text"
+                      className="input-base font-mono uppercase"
+                      value={formData.caf_pan}
+                      onChange={(e) => updateField('caf_pan', e.target.value.toUpperCase())}
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-semibold text-gray-700 mb-1">State GSTIN</label>
+                    <input
+                      type="text"
+                      className="input-base font-mono uppercase"
+                      value={formData.caf_gstin}
+                      onChange={(e) => updateField('caf_gstin', e.target.value.toUpperCase())}
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-semibold text-gray-700 mb-1">Corporate CIN</label>
+                    <input
+                      type="text"
+                      className="input-base font-mono uppercase"
+                      value={formData.caf_cin}
+                      onChange={(e) => updateField('caf_cin', e.target.value.toUpperCase())}
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-semibold text-gray-700 mb-1">Director DIN</label>
+                    <input
+                      type="text"
+                      className="input-base font-mono"
+                      value={formData.caf_director_din}
+                      onChange={(e) => updateField('caf_director_din', e.target.value)}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="pt-2 border-t border-gray-100">
+                <h4 className="font-bold text-gray-900 uppercase tracking-wide mb-2">Technical & Spatial Parameters</h4>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block font-semibold text-gray-700 mb-1">Land Area (sq.m)</label>
+                    <input
+                      type="number"
+                      className="input-base"
+                      value={formData.land_area_sqm}
+                      onChange={(e) => updateField('land_area_sqm', e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-semibold text-gray-700 mb-1">Water Demand (KLD)</label>
+                    <input
+                      type="number"
+                      className="input-base"
+                      value={formData.water_usage_kld}
+                      onChange={(e) => updateField('water_usage_kld', e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-semibold text-gray-700 mb-1">Power Load (kVA)</label>
+                    <input
+                      type="number"
+                      className="input-base"
+                      value={formData.power_requirement_kva}
+                      onChange={(e) => updateField('power_requirement_kva', e.target.value)}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="pt-2 border-t border-gray-100">
+                <h4 className="font-bold text-gray-900 uppercase tracking-wide mb-2">Authority Representative</h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-semibold text-gray-700 mb-1">Signatory Full Name</label>
+                    <input
+                      type="text"
+                      className="input-base"
+                      value={formData.rep_name}
+                      onChange={(e) => updateField('rep_name', e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-semibold text-gray-700 mb-1">Designation</label>
+                    <input
+                      type="text"
+                      className="input-base"
+                      value={formData.rep_designation}
+                      onChange={(e) => updateField('rep_designation', e.target.value)}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="pt-4 border-t border-gray-100 flex items-center justify-between">
+              <span className="text-xs text-gray-500">Auto-saved to current proposal draft</span>
+              <button
+                type="button"
+                onClick={() => setIsEditingBaselineModalOpen(false)}
+                className="btn-primary text-xs cursor-pointer"
+              >
+                Save & Apply to CAF Baseline
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

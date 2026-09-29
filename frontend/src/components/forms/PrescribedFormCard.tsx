@@ -2,6 +2,7 @@
 
 import React from 'react';
 import type { PrescribedForm } from '@/types/api';
+import { prescribedFormsApi } from '@/lib/api';
 import {
   FileDown,
   UploadCloud,
@@ -26,13 +27,8 @@ export function PrescribedFormCard({ form, onUploadCompletedForm }: Props) {
   const isOnlinePortal = form.is_online_application || form.provenance_status === 'OFFICIAL_ONLINE_PORTAL';
 
   const handleDownload = () => {
-    const downloadUrl = `/api/prescribed-forms/${form.id}/download`;
-    const link = document.createElement('a');
-    link.href = downloadUrl;
-    link.download = form.file_name;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    const downloadUrl = prescribedFormsApi.downloadUrl(form.id);
+    window.open(downloadUrl, '_blank', 'noopener,noreferrer');
   };
 
   return (

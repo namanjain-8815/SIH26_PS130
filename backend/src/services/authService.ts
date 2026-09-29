@@ -159,3 +159,32 @@ export async function getCurrentUser(userId: string) {
       : null,
   };
 }
+
+export async function updatePassword(
+  userId: string,
+  currentPassword: string,
+  newPassword: string
+): Promise<{ success: boolean; message: string }> {
+  if (!currentPassword || !newPassword) {
+    throw new BadRequestError('Current password and new password are required.');
+  }
+  if (newPassword.length < 8) {
+    throw new BadRequestError('New password must be at least 8 characters in length.');
+  }
+
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) throw new NotFoundError('User not found.');
+
+  const isCurrentValid = await bcrypt.compare(currentPassword, user.password_hash);
+  if (!isCurrentValid) {
+    throw new BadRequestError('Current password does not match.');
+  }
+
+  const newHash = await bcrypt.hash(newPassword, 10);
+  await prisma.user.update({
+    where: { id: userId },
+    data: { password_hash: newHash },
+  });
+
+  return { success: true, message: 'Password updated successfully.' };
+}

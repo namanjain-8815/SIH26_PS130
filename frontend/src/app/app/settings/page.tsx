@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { formatRole } from '@/lib/terminology';
+import { authApi } from '@/lib/api';
 import {
   User,
   Building2,
@@ -14,6 +15,7 @@ import {
   Lock,
   Save,
   AlertCircle,
+  Loader2,
 } from 'lucide-react';
 
 export default function SettingsPage() {
@@ -41,6 +43,7 @@ export default function SettingsPage() {
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
   const [passwordStatus, setPasswordStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   const handleProfileSave = (e: React.FormEvent) => {
@@ -49,7 +52,7 @@ export default function SettingsPage() {
     setTimeout(() => setSavedMessage(null), 3000);
   };
 
-  const handlePasswordUpdate = (e: React.FormEvent) => {
+  const handlePasswordUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentPassword || !newPassword) {
       setPasswordStatus({ type: 'error', message: 'Please fill in all password fields.' });
@@ -63,11 +66,22 @@ export default function SettingsPage() {
       setPasswordStatus({ type: 'error', message: 'Passwords do not match.' });
       return;
     }
-    setPasswordStatus({ type: 'success', message: 'Password updated successfully.' });
-    setCurrentPassword('');
-    setNewPassword('');
-    setConfirmPassword('');
-    setTimeout(() => setPasswordStatus(null), 3500);
+
+    try {
+      setIsUpdatingPassword(true);
+      setPasswordStatus(null);
+      const res = await authApi.updatePassword(currentPassword, newPassword);
+      setPasswordStatus({ type: 'success', message: res.message || 'Password updated successfully.' });
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      setTimeout(() => setPasswordStatus(null), 4000);
+    } catch (err: any) {
+      const msg = err?.response?.data?.error || err?.message || 'Failed to update password. Please check your current password.';
+      setPasswordStatus({ type: 'error', message: msg });
+    } finally {
+      setIsUpdatingPassword(false);
+    }
   };
 
   const toggleNotification = (key: keyof typeof notifications) => {
@@ -431,10 +445,15 @@ export default function SettingsPage() {
 
               <button
                 type="submit"
-                className="inline-flex items-center gap-2 px-4 py-2 bg-primary-700 text-white rounded-lg text-sm font-medium hover:bg-primary-800 transition-colors shadow-sm"
+                disabled={isUpdatingPassword}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-primary-700 text-white rounded-lg text-sm font-medium hover:bg-primary-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
               >
-                <KeyRound className="w-4 h-4" />
-                <span>Update Password</span>
+                {isUpdatingPassword ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <KeyRound className="w-4 h-4" />
+                )}
+                <span>{isUpdatingPassword ? 'Updating...' : 'Update Password'}</span>
               </button>
             </form>
           </div>

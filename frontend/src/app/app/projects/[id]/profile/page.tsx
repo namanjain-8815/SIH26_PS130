@@ -25,6 +25,7 @@ import {
   Loader2,
   AlertCircle,
   HelpCircle,
+  UserCheck,
 } from 'lucide-react';
 import { CardSkeleton, ErrorState } from '@/components/ui/States';
 import { DigiLockerVerificationCard } from '@/components/documents/DigiLockerVerificationCard';
@@ -69,6 +70,11 @@ export default function MasterProjectProfilePage() {
     water_usage_kld: string;
     power_requirement_kva: string;
     pollution_category: string;
+    representative_name: string;
+    representative_designation: string;
+    representative_email: string;
+    representative_phone: string;
+    representative_auth_letter: string;
   } | null>(null);
 
   const initEditForm = () => {
@@ -90,6 +96,11 @@ export default function MasterProjectProfilePage() {
       water_usage_kld: profile.technical_attributes.water_usage_kld || '50',
       power_requirement_kva: profile.technical_attributes.power_requirement_kva || '500',
       pollution_category: profile.technical_attributes.pollution_category || 'red',
+      representative_name: profile.technical_attributes.representative_name || 'Rajesh Sharma',
+      representative_designation: profile.technical_attributes.representative_designation || 'Director & Authorized Signatory',
+      representative_email: profile.technical_attributes.representative_email || 'rajesh.sharma@sahyadriagro.in',
+      representative_phone: profile.technical_attributes.representative_phone || '+91 98201 12345',
+      representative_auth_letter: profile.technical_attributes.representative_auth_letter || 'Board Resolution BR-2026-44',
     });
     setIsEditing(true);
     setSaveSuccessMsg(null);
@@ -133,6 +144,11 @@ export default function MasterProjectProfilePage() {
         water_usage_kld: editForm.water_usage_kld,
         power_requirement_kva: editForm.power_requirement_kva,
         pollution_category: editForm.pollution_category,
+        representative_name: editForm.representative_name,
+        representative_designation: editForm.representative_designation,
+        representative_email: editForm.representative_email,
+        representative_phone: editForm.representative_phone,
+        representative_auth_letter: editForm.representative_auth_letter,
       },
     });
   };
@@ -240,6 +256,73 @@ export default function MasterProjectProfilePage() {
 
       {/* DigiLocker Verification — Prototype Simulation (P1.X) */}
       <DigiLockerVerificationCard projectId={projectId} />
+
+      {/* Authority Representative & Statutory Signatory Card */}
+      <div className="card p-6 bg-white border border-gray-200/90 rounded-2xl shadow-sm space-y-4">
+        <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center">
+              <UserCheck className="w-4 h-4" />
+            </div>
+            <div>
+              <h2 className="text-sm font-bold text-gray-900">Authority Representative & Statutory Signatory</h2>
+              <p className="text-[11px] text-gray-400">Section 7, Maharashtra Single Window Act 2023 · Empowered Officer</p>
+            </div>
+          </div>
+          <span className="badge bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px]">
+            Designated Representative Active
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+          <div className="p-3 bg-gray-50/80 rounded-xl border border-gray-100 space-y-1">
+            <span className="text-gray-500 block">Representative Full Name</span>
+            <p className="font-bold text-gray-900">
+              {profile.technical_attributes?.representative_name || 'Rajesh Sharma'}
+            </p>
+          </div>
+
+          <div className="p-3 bg-gray-50/80 rounded-xl border border-gray-100 space-y-1">
+            <span className="text-gray-500 block">Designation / Role</span>
+            <p className="font-semibold text-gray-800">
+              {profile.technical_attributes?.representative_designation || 'Director & Authorized Signatory'}
+            </p>
+          </div>
+
+          <div className="p-3 bg-gray-50/80 rounded-xl border border-gray-100 space-y-1">
+            <span className="text-gray-500 block">Contact Mobile</span>
+            <p className="font-semibold text-gray-800">
+              {profile.technical_attributes?.representative_phone || '+91 98201 12345'}
+            </p>
+          </div>
+
+          <div className="p-3 bg-gray-50/80 rounded-xl border border-gray-100 space-y-1">
+            <span className="text-gray-500 block">Official Email</span>
+            <p className="font-semibold text-gray-800 truncate">
+              {profile.technical_attributes?.representative_email || 'rajesh.sharma@sahyadriagro.in'}
+            </p>
+          </div>
+        </div>
+
+        <div className="p-3 bg-emerald-50/60 border border-emerald-200/80 rounded-xl flex flex-wrap items-center justify-between gap-2 text-xs">
+          <div className="flex items-center gap-2 text-emerald-900">
+            <ShieldCheck className="w-4 h-4 text-emerald-700 flex-shrink-0" />
+            <span>
+              Authority Instrument:{' '}
+              <strong className="font-mono text-emerald-950">
+                {profile.technical_attributes?.representative_auth_letter || 'Board Resolution BR-2026-44 (Under Companies Act 2013)'}
+              </strong>
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={initEditForm}
+            className="text-emerald-800 hover:text-emerald-950 font-bold underline cursor-pointer"
+          >
+            Edit Representative Details
+          </button>
+        </div>
+      </div>
 
       {/* 4 Pillars of Master Profile */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
@@ -582,8 +665,8 @@ export default function MasterProjectProfilePage() {
 
       {/* Controlled Edit Profile Modal */}
       {isEditing && editForm && (
-        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 animate-fade-in">
-          <div className="bg-white rounded-2xl max-w-3xl w-full p-6 shadow-2xl border border-gray-100 space-y-5 animate-scale-in max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto animate-fade-in">
+          <div className="bg-white rounded-2xl max-w-3xl w-full p-6 shadow-2xl border border-gray-100 space-y-5 animate-scale-in my-auto max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-gray-100 pb-3">
               <div className="flex items-center gap-2">
                 <Edit3 className="w-5 h-5 text-primary-600" />
@@ -743,6 +826,58 @@ export default function MasterProjectProfilePage() {
                       className="input-base"
                       value={editForm.power_requirement_kva}
                       onChange={(e) => setEditForm({ ...editForm, power_requirement_kva: e.target.value })}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Authority Representative */}
+              <div className="pt-2 border-t border-gray-100">
+                <h4 className="font-bold text-gray-900 uppercase tracking-wide mb-2">Authority Representative & Signatory</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-semibold text-gray-700 mb-1">Representative Full Name</label>
+                    <input
+                      type="text"
+                      className="input-base"
+                      value={editForm.representative_name}
+                      onChange={(e) => setEditForm({ ...editForm, representative_name: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-semibold text-gray-700 mb-1">Designation</label>
+                    <input
+                      type="text"
+                      className="input-base"
+                      value={editForm.representative_designation}
+                      onChange={(e) => setEditForm({ ...editForm, representative_designation: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-semibold text-gray-700 mb-1">Contact Mobile</label>
+                    <input
+                      type="tel"
+                      className="input-base"
+                      value={editForm.representative_phone}
+                      onChange={(e) => setEditForm({ ...editForm, representative_phone: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-semibold text-gray-700 mb-1">Official Email</label>
+                    <input
+                      type="email"
+                      className="input-base"
+                      value={editForm.representative_email}
+                      onChange={(e) => setEditForm({ ...editForm, representative_email: e.target.value })}
+                    />
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="block font-semibold text-gray-700 mb-1">Authorization Instrument Reference</label>
+                    <input
+                      type="text"
+                      className="input-base"
+                      value={editForm.representative_auth_letter}
+                      onChange={(e) => setEditForm({ ...editForm, representative_auth_letter: e.target.value })}
                     />
                   </div>
                 </div>

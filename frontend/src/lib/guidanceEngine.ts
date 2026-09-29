@@ -159,6 +159,99 @@ export function resolveGuidanceQuestion(query: string, ctx: GuidanceContext): Gu
   const authority = ctx.applicationData?.authority || 'the Competent Authority';
   const status = ctx.applicationData?.status || 'IN_PREPARATION';
 
+  // 0. Conversational Greetings & Social Queries
+  if (
+    q === 'hi' ||
+    q === 'hii' ||
+    q === 'hiii' ||
+    q === 'hiiii' ||
+    q === 'hello' ||
+    q === 'hey' ||
+    q === 'heyy' ||
+    q === 'namaste' ||
+    q === 'namaskar' ||
+    q === 'yo' ||
+    q === 'sup' ||
+    q === 'howdy' ||
+    q.startsWith('hi ') ||
+    q.startsWith('hii ') ||
+    q.startsWith('hello ') ||
+    q.startsWith('hey ') ||
+    q.includes('good morning') ||
+    q.includes('good afternoon') ||
+    q.includes('good evening') ||
+    q.includes('good day') ||
+    q.includes('greetings') ||
+    q.includes('hi there') ||
+    q.includes('hello there')
+  ) {
+    return {
+      intentId: 'greeting',
+      title: 'Welcome to Udyog Setu Guidance Assistant 👋',
+      answer: `Hello! Welcome back to **Udyog Setu** — Maharashtra's Single Window Industrial Clearance Portal.\n\nI am here to guide you with:\n• **Statutory Prerequisites & Clearances** (MPCB, DISH, MIDC, Fire Services)\n• **Document Checklist & Pre-validation Rules**\n• **Parallel Application Roadmap & Turnaround Estimation**\n• **Departmental Queries & RTS Act Specified Time Limit Tracking**\n\nHow can I assist your industrial proposal today?`,
+      actions: [
+        { label: 'View Clearances Roadmap', href: '/app/approvals' },
+        { label: 'Open Document Vault', href: '/app/documents' },
+      ],
+      suggestedFollowUps: [
+        'Which permissions can I start now?',
+        'Which documents are required?',
+        'What is my current proposal status?',
+      ],
+    };
+  }
+
+  if (
+    q.includes('how are you doing') ||
+    q.includes('how are you') ||
+    q.includes('how are u') ||
+    q.includes('how r u') ||
+    q.includes('how do you do') ||
+    q.includes("what's up") ||
+    q.includes('whats up') ||
+    q.includes('how is it going') ||
+    q.includes('hows it going') ||
+    q.includes('how is everything') ||
+    q.includes('how is your day')
+  ) {
+    return {
+      intentId: 'how_are_you',
+      title: 'All Systems Operational ⚡',
+      answer: `I am doing great and ready to assist you! All Single Window clearance engines, regulatory rule evaluators, and statutory time limit monitors are active and connected.\n\nWhat would you like to explore for **${projName}**?`,
+      actions: [
+        { label: 'View Clearances Status', href: '/app/approvals' },
+        { label: 'Open Document Detail Centre', href: '/app/documents' },
+      ],
+      suggestedFollowUps: [
+        'Which permissions can proceed in parallel?',
+        'Are there any pending queries?',
+        'What documents are missing?',
+      ],
+    };
+  }
+
+  if (
+    q.includes('who are you') ||
+    q.includes('what can you do') ||
+    q.includes('help me') ||
+    q === 'help'
+  ) {
+    return {
+      intentId: 'capabilities',
+      title: 'Udyog Setu Statutory Assistant Capabilities',
+      answer: `I am your digital regulatory guide for industrial approvals in Maharashtra.\n\n**Here is what I can do for you**:\n1. **Document Validation**: Check if your documents meet MIDC, MPCB, and DISH statutory standards.\n2. **Dependency Resolution**: Explain why an application might be waiting on prerequisite clearances.\n3. **Parallel Processing**: Identify clearances that can proceed concurrently to save time.\n4. **Statutory RTS Deadlines**: Track deemed approval countdowns under Maharashtra Right to Services.\n5. **Department Query Guidance**: Help you draft complete responses to officer clarifications.`,
+      actions: [
+        { label: 'View Clearances Roadmap', href: '/app/approvals' },
+        { label: 'Open Document Vault', href: '/app/documents' },
+      ],
+      suggestedFollowUps: [
+        'Which permissions can I start now?',
+        'What documents are needed?',
+        'Why is this application blocked?',
+      ],
+    };
+  }
+
   // 1. What is this permission?
   if (q.includes('what is this permission') || q.includes('about this permission') || q.includes('what does this approval mean')) {
     return {

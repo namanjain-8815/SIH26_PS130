@@ -17,6 +17,7 @@ import {
   Layers,
   Search,
 } from 'lucide-react';
+import { getAbsoluteDownloadUrl } from '@/lib/api';
 
 interface Props {
   data?: ProjectDocumentGuidanceResponse | null;
@@ -245,8 +246,10 @@ export function ClearanceDocumentGuidanceView({
                             Official Statutory Template: {doc.prescribed_form.form_name}
                           </span>
                           <a
-                            href={doc.prescribed_form.download_url}
+                            href={getAbsoluteDownloadUrl(doc.prescribed_form.download_url)}
                             download={doc.prescribed_form.file_name}
+                            target="_blank"
+                            rel="noopener noreferrer"
                             className="text-amber-700 hover:text-amber-900 font-semibold flex items-center gap-1 hover:underline"
                           >
                             <Download className="w-3 h-3" /> Download Form

@@ -1,4 +1,26 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api';
+/**
+ * Resolves the base API URL dynamically:
+ * 1. Server-side / runtime functions: uses Vercel Services binding `process.env.BACKEND_URL` if present.
+ * 2. Client-side browser: uses `NEXT_PUBLIC_API_URL` if explicitly set, or relative `/api` on production/same-domain deployments.
+ * 3. Local fallback: 'http://localhost:4000/api'.
+ */
+export function getApiBaseUrl(): string {
+  if (typeof window !== 'undefined') {
+    if (process.env.NEXT_PUBLIC_API_URL) {
+      return process.env.NEXT_PUBLIC_API_URL;
+    }
+    if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+      return '/api';
+    }
+    return 'http://localhost:4000/api';
+  }
+
+  // Server-side (SSR / Next.js Server Components / Route Handlers)
+  if (process.env.BACKEND_URL) {
+    return `${process.env.BACKEND_URL}/api`;
+  }
+  return process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api';
+}
 
 function getToken(): string | null {
   if (typeof window === 'undefined') return null;
@@ -7,8 +29,9 @@ function getToken(): string | null {
 
 export async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = getToken();
+  const baseUrl = getApiBaseUrl();
 
-  const res = await fetch(`${API_URL}${path}`, {
+  const res = await fetch(`${baseUrl}${path}`, {
     ...options,
     headers: {
       'Content-Type': 'application/json',
@@ -57,6 +80,8 @@ export const authApi = {
   register: (data: { name: string; email: string; password: string; entity_name: string; entity_type?: string; sector?: string }) =>
     api.post<{ token: string; user: { id: string; name: string; email: string; role: string; org_id: string | null; department_id: string | null; department?: { id: string; name: string } | null; organization?: { id: string; name: string; legal_name?: string } | null } }>('/auth/register', data),
   me: () => api.get<{ id: string; name: string; email: string; role: string; org_id: string | null; department_id: string | null; department?: { id: string; name: string } | null; organization?: { id: string; name: string; legal_name?: string } | null }>('/auth/me'),
+  updatePassword: (current_password: string, new_password: string) =>
+    api.post<{ success: boolean; message: string }>('/auth/update-password', { current_password, new_password }),
 };
 
 // Projects
@@ -220,7 +245,7 @@ export const inspectionsApi = {
 
 // Documents
 export const documentsApi = {
-  getFileUrl: (id: string) => `${API_URL}/documents/${id}/file`,
+  getFileUrl: (id: string) => `${getApiBaseUrl()}/documents/${id}/file`,
   get: (id: string) => api.get<import('@/types/api').DocumentItem>(`/documents/${id}`),
   update: (id: string, data: object) => api.patch(`/documents/${id}`, data),
   delete: (id: string) => api.delete<{ message: string; deleted_id: string }>(`/documents/${id}`),
@@ -452,10 +477,21 @@ export const facilitationApi = {
 export const formsApi = {
   list: () => api.get<import('@/types/api').PrescribedForm[]>('/prescribed-forms'),
   get: (id: string) => api.get<import('@/types/api').PrescribedForm>(`/prescribed-forms/${id}`),
-  downloadUrl: (id: string) => `/api/prescribed-forms/${id}/download`,
+  downloadUrl: (id: string) => `${getApiBaseUrl()}/prescribed-forms/${id}/download`,
   getForApprovalType: (approvalTypeId: string) =>
     api.get<import('@/types/api').PrescribedForm | null>(`/approval-types/${approvalTypeId}/prescribed-form`),
 };
+export const prescribedFormsApi = formsApi;
+
+export function getAbsoluteDownloadUrl(urlOrPath?: string): string {
+  if (!urlOrPath) return '#';
+  if (urlOrPath.startsWith('http://') || urlOrPath.startsWith('https://')) {
+    return urlOrPath;
+  }
+  const cleanPath = urlOrPath.startsWith('/api') ? urlOrPath.slice(4) : urlOrPath;
+  const normalized = cleanPath.startsWith('/') ? cleanPath : `/${cleanPath}`;
+  return `${getApiBaseUrl()}${normalized}`;
+}
 
 // Contextual Guidance Assistant (P1.12)
 export const guidanceApi = {

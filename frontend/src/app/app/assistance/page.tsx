@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { facilitationApi, projectsApi, applicationsApi } from '@/lib/api';
 import type {
@@ -61,6 +61,14 @@ export default function InvestorAssistancePage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [categoryFilter, setCategoryFilter] = useState<string>('ALL');
+  const detailPaneRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (selectedId && detailPaneRef.current) {
+      detailPaneRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      detailPaneRef.current.scrollTop = 0;
+    }
+  }, [selectedId]);
 
   // Form states
   const [category, setCategory] = useState<FacilitationCategory>('Approval Guidance');
@@ -339,7 +347,7 @@ export default function InvestorAssistancePage() {
 
         {/* Right Detail Pane */}
         {selectedId && selected ? (
-          <div className="hidden md:flex flex-1 flex-col overflow-y-auto bg-white p-6">
+          <div ref={detailPaneRef} className="hidden md:flex flex-1 flex-col overflow-y-auto bg-white p-6 sticky top-2 max-h-[calc(100vh-8rem)] self-start rounded-xl border border-gray-200 shadow-md">
             {/* Header info */}
             <div className="pb-4 border-b border-gray-200 flex items-start justify-between gap-4">
               <div>

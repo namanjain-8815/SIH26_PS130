@@ -524,8 +524,101 @@ export async function getContextualGuidance(params: {
   let searchMatch: GuidanceQuestionAnswer | null = null;
   if (params.query_text) {
     const q = params.query_text.toLowerCase().trim();
-
-    if (q.includes('block') || q.includes('prereq') || q.includes('wait') || q.includes('depend')) {
+    // Common greetings and polite user interactions
+    if (
+      q === 'hello' ||
+      q === 'hi' ||
+      q === 'hey' ||
+      q === 'namaste' ||
+      q.startsWith('hello') ||
+      q.startsWith('hi ') ||
+      q.startsWith('hey ') ||
+      q.includes('good morning') ||
+      q.includes('good afternoon') ||
+      q.includes('good evening')
+    ) {
+      searchMatch = {
+        question_id: 'greeting_hello',
+        question: params.query_text,
+        category: 'Assistant Support',
+        title: 'Welcome to Maharashtra Single Window Assistant 👋',
+        answer: `Hello! I am doing great, thank you for checking in! I am your Single Window **Statutory Guidance Assistant**.\n\nI am tracking **${projectName}** in real time. How can I help streamline your approvals today?\n\n• Check required proofs and missing documents in your Vault.\n• Verify which parallel approvals can start right now.\n• Review Right to Public Services Act (RTS) statutory deadlines.\n• Prepare or review your Common Application Form (CAF).`,
+        actions: [
+          { label: 'Check Document Vault', href: '/app/documents' },
+          { label: 'View All Clearances', href: '/app/approvals' },
+          { label: 'Incentive Schemes', href: '/app/incentives' },
+        ],
+        suggested_follow_ups: [
+          'What documents are needed?',
+          'Which approvals can start now?',
+          'What is the configured time limit?',
+        ],
+      };
+    } else if (q.includes('how are you') || q.includes('how r u') || q.includes('how do you do')) {
+      searchMatch = {
+        question_id: 'greeting_how_are_you',
+        question: params.query_text,
+        category: 'Assistant Support',
+        title: 'All Systems Operational ⚡',
+        answer: `I am doing great and ready to assist you! All Single Window clearance engines, regulatory rule evaluators, and statutory time limit monitors are active and connected.\n\nWhat would you like to explore for **${projectName}**?`,
+        actions: [
+          { label: 'View Clearances Status', href: '/app/approvals' },
+          { label: 'Open Document Detail Centre', href: '/app/documents' },
+        ],
+        suggested_follow_ups: [
+          'What should I do next?',
+          'Which approvals can start now?',
+          'What documents are needed?',
+        ],
+      };
+    } else if (q.includes('who are you') || q.includes('what can you do') || q.includes('help')) {
+      searchMatch = {
+        question_id: 'greeting_who_are_you',
+        question: params.query_text,
+        category: 'Assistant Support',
+        title: 'Single Window Clearance Assistant Capabilities',
+        answer: `I am your digital regulatory guide for industrial approvals in Maharashtra (MAITRI 2.0).\n\n**Here is what I can do for you**:\n1. **Document Validation**: Check if your documents meet MIDC, MPCB, and DISH statutory standards.\n2. **Dependency Resolution**: Explain why an application might be waiting on prerequisite clearances.\n3. **Parallel Processing**: Identify clearances that can proceed concurrently to save time.\n4. **Statutory RTS Deadlines**: Track deemed approval countdowns under Maharashtra Right to Services.\n5. **Department Query Guidance**: Help you draft complete responses to officer clarifications.`,
+        actions: [
+          { label: 'View Investment Proposal', href: `/app/projects/${projectId}` },
+          { label: 'Explore Approval Directory', href: '/app/approval-directory' },
+        ],
+        suggested_follow_ups: [
+          'What should I do next?',
+          'What documents are needed?',
+          'Why is this application blocked?',
+        ],
+      };
+    } else if (q.includes('scheme') || q.includes('incentive') || q.includes('subsidy') || q.includes('benefit')) {
+      searchMatch = {
+        question_id: 'incentives_guidance',
+        question: params.query_text,
+        category: 'Promotional Schemes',
+        title: 'Applicable Government Schemes & Subsidies',
+        answer: `Based on your undertaking's sector (**${project?.sector || 'Industrial'}**) and capital investment tier, you may be eligible for:\n\n• **Maharashtra Package Scheme of Incentives (PSI) 2019**: Up to 30% capital subsidy, electricity duty waiver, and stamp duty exemption.\n• **MSME Technology Upgradation Scheme**: Credit-linked capital subsidy for eligible equipment.\n• **MoFPI / Kisan Sampada Scheme**: Infrastructure grants for agro & food processing units.`,
+        actions: [
+          { label: 'View Matched Incentives', href: '/app/incentives' },
+        ],
+        suggested_follow_ups: [
+          'What documents are needed?',
+          'What should I do next?',
+        ],
+      };
+    } else if (q.includes('inspect') || q.includes('visit') || q.includes('officer')) {
+      searchMatch = {
+        question_id: 'inspection_guidance',
+        question: params.query_text,
+        category: 'Site Inspections',
+        title: 'Joint Site Inspection Procedures',
+        answer: `Under Maharashtra Single Window guidelines, site inspections are conducted jointly across MIDC, MPCB, and DISH to eliminate repetitive site visits.\n\n• You will receive an inspection notice with designated date and officer details.\n• You can verify your site readiness checklist before the scheduled date.\n• Inspection findings and photo exhibits are logged directly into your single-window timeline.`,
+        actions: [
+          { label: 'View Site Inspections', href: '/app/inspections' },
+        ],
+        suggested_follow_ups: [
+          'What documents are needed?',
+          'What should I do next?',
+        ],
+      };
+    } else if (q.includes('block') || q.includes('prereq') || q.includes('wait') || q.includes('depend')) {
       searchMatch = answers['why_application_blocked'];
     } else if (q.includes('doc') || q.includes('upload') || q.includes('proof') || q.includes('attach')) {
       searchMatch = answers['what_documents_needed'];
@@ -541,7 +634,7 @@ export async function getContextualGuidance(params: {
       searchMatch = answers['which_form_should_i_use'];
     } else if (q.includes('sla') || q.includes('time') || q.includes('limit') || q.includes('deadline') || q.includes('day')) {
       searchMatch = answers['what_is_configured_time_limit'];
-    } else if (q.includes('query') || q.includes('clarif') || q.includes('respond') || q.includes('officer')) {
+    } else if (q.includes('query') || q.includes('clarif') || q.includes('respond')) {
       searchMatch = answers['how_do_i_respond_to_query'];
     } else {
       // Default fallback
