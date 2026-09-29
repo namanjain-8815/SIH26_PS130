@@ -6,11 +6,23 @@
  */
 export function getApiBaseUrl(): string {
   if (typeof window !== 'undefined') {
+    const isLocalhost =
+      window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+
+    if (!isLocalhost) {
+      // In production/cloud deployments (e.g. Vercel), route through relative /api rewrite
+      if (
+        process.env.NEXT_PUBLIC_API_URL &&
+        process.env.NEXT_PUBLIC_API_URL.startsWith('https://') &&
+        !process.env.NEXT_PUBLIC_API_URL.includes('localhost')
+      ) {
+        return process.env.NEXT_PUBLIC_API_URL;
+      }
+      return '/api';
+    }
+
     if (process.env.NEXT_PUBLIC_API_URL) {
       return process.env.NEXT_PUBLIC_API_URL;
-    }
-    if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-      return '/api';
     }
     return 'http://localhost:4000/api';
   }

@@ -1,6 +1,7 @@
 import jwt from 'jsonwebtoken';
 
-const JWT_SECRET = process.env.JWT_SECRET ?? 'dev-secret-change-me';
+const JWT_SECRET =
+  process.env.JWT_SECRET || 'sih26-ps130-industrial-approvals-platform-jwt-secret-2026';
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN ?? '7d';
 
 export interface TokenPayload {
