@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import {
   Sparkles,
@@ -31,6 +31,10 @@ import {
   AlertTriangle,
   BarChart3,
   CheckCircle2,
+  Play,
+  Pause,
+  Minimize2,
+  Maximize2,
 } from 'lucide-react';
 
 interface TourStep {
@@ -250,21 +254,6 @@ const ROLE_TOURS: Record<string, RoleTourConfig> = {
         actionHref: '/government/work-queue',
       },
       {
-        title: 'Official Statutory Actions & Queries',
-        badge: 'Decision Engine',
-        description:
-          'Take formal administrative decisions with complete audit trail accountability.',
-        icon: ShieldCheck,
-        color: 'bg-indigo-600 text-white',
-        features: [
-          'Raise formal clarification queries (automatically pauses the RTS SLA clock)',
-          'Schedule coordinated joint inspections with sister authorities',
-          'Grant official statutory approval with reference numbers or record rejections',
-        ],
-        actionLabel: 'Review Pending Applications',
-        actionHref: '/government/work-queue',
-      },
-      {
         title: 'Joint Site Inspection Coordination',
         badge: 'Inter-Agency Inspection',
         description:
@@ -308,6 +297,21 @@ const ROLE_TOURS: Record<string, RoleTourConfig> = {
         ],
         actionLabel: 'View Analytics',
         actionHref: '/government/analytics',
+      },
+      {
+        title: 'Official Statutory Activity & Notifications',
+        badge: 'Real-Time Clearance Feed',
+        description:
+          'Live alerts on new application submissions, applicant query replies, and joint inspection updates.',
+        icon: ShieldCheck,
+        color: 'bg-emerald-600 text-white',
+        features: [
+          'Instant notifications when applicants respond to queries',
+          'Joint site visit date confirmations across participating authorities',
+          'Permanent audit logging of all official events',
+        ],
+        actionLabel: 'View Notifications Feed',
+        actionHref: '/government/notifications',
       },
     ],
   },
@@ -399,33 +403,18 @@ const ROLE_TOURS: Record<string, RoleTourConfig> = {
     roleBadge: 'Inspector Desk Tour',
     steps: [
       {
-        title: 'Joint Inspection Planner',
+        title: 'Joint Inspection Planner & Findings Logger',
         badge: 'Field Command Desk',
         description:
-          'Your dedicated inspection operations workbench. Coordinate single joint visits with MIDC, MPCB, and Labour authorities.',
+          'Your dedicated inspection operations workbench. Coordinate single joint visits with MIDC, MPCB, and Labour authorities, and record geo-tagged findings.',
         icon: CalendarDays,
         color: 'bg-purple-600 text-white',
         features: [
           'Single joint inspection itinerary coordinated across state departments',
           'Inspect applicant factory location, proposed layout, and machinery details',
-          'Verify applicant readiness confirmation prior to physical visit',
+          'Record site observations, compliance findings, and corrective requirements',
         ],
         actionLabel: 'Open Inspection Planner',
-        actionHref: '/government/inspections',
-      },
-      {
-        title: 'Physical Verification & Findings Logger',
-        badge: 'On-Site Evidence',
-        description:
-          'Record site observations, compliance findings, and corrective requirements directly into the platform.',
-        icon: CheckCircle2,
-        color: 'bg-emerald-600 text-white',
-        features: [
-          'Categorize findings by severity (Critical, High, Medium, Minor)',
-          'Specify required corrective actions with compliance deadlines',
-          'Digital submission produces an official Joint Inspection Report',
-        ],
-        actionLabel: 'View Scheduled Inspections',
         actionHref: '/government/inspections',
       },
       {
@@ -444,7 +433,7 @@ const ROLE_TOURS: Record<string, RoleTourConfig> = {
         actionHref: '/government/sla-monitor',
       },
       {
-        title: 'Inspection Alerts & Notifications',
+        title: 'Inspection Alerts & Schedule Notifications',
         badge: 'Real-Time Schedule Updates',
         description:
           'Receive instant notifications when new joint inspections are scheduled, rescheduled, or acknowledged by applicants.',
@@ -644,162 +633,359 @@ const ROLE_TOURS: Record<string, RoleTourConfig> = {
 export function SiteTourGuide() {
   const { user } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
+
   const [isOpen, setIsOpen] = useState(false);
+  const [isMinimized, setIsMinimized] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
+  const [isAutoPlaying, setIsAutoPlaying] = useState(false);
+  const [autoProgress, setAutoProgress] = useState(0);
+  const [isHovered, setIsHovered] = useState(false);
+  const lastTouredUserRef = useRef<string | null>(null);
 
   // Select active role tour suite
   const activeRole = user?.role || 'DEFAULT';
   const tourConfig = ROLE_TOURS[activeRole] || ROLE_TOURS.DEFAULT;
   const tourSteps = tourConfig.steps;
 
-  useEffect(() => {
-    const handleOpen = () => {
-      setCurrentStep(0);
-      setIsOpen(true);
-    };
-    window.addEventListener('open-site-tour', handleOpen);
-    return () => window.removeEventListener('open-site-tour', handleOpen);
-  }, []);
-
-  // Reset step if role changes
-  useEffect(() => {
-    setCurrentStep(0);
-  }, [user?.role]);
-
-  const step = tourSteps[currentStep] || tourSteps[0];
-  const Icon = step.icon;
+  // Jump to specific step and navigate browser to that page
+  const goToStep = (targetIndex: number) => {
+    if (targetIndex < 0 || targetIndex >= tourSteps.length) return;
+    setCurrentStep(targetIndex);
+    setAutoProgress(0);
+    if (typeof window !== 'undefined') {
+      window.sessionStorage.setItem('tour_current_step', String(targetIndex));
+      window.sessionStorage.setItem('tour_active', 'true');
+    }
+    const target = tourSteps[targetIndex];
+    if (target?.actionHref && pathname !== target.actionHref) {
+      router.push(target.actionHref);
+    }
+  };
 
   const handleNext = () => {
     if (currentStep < tourSteps.length - 1) {
-      setCurrentStep((prev) => prev + 1);
+      goToStep(currentStep + 1);
     } else {
-      setIsOpen(false);
-      setCurrentStep(0);
+      handleClose();
     }
   };
 
   const handlePrev = () => {
     if (currentStep > 0) {
-      setCurrentStep((prev) => prev - 1);
+      goToStep(currentStep - 1);
     }
   };
 
-  const handleActionClick = (href: string) => {
+  const handleClose = () => {
     setIsOpen(false);
-    router.push(href);
+    setIsAutoPlaying(false);
+    setAutoProgress(0);
+    if (typeof window !== 'undefined') {
+      window.sessionStorage.removeItem('tour_active');
+      window.sessionStorage.removeItem('tour_current_step');
+    }
   };
 
+  // Auto-activate tour upon login or account switch
+  useEffect(() => {
+    if (!user?.email) return;
+
+    const shouldTriggerOnLogin =
+      typeof window !== 'undefined' &&
+      window.sessionStorage.getItem('trigger_tour_on_login') === 'true';
+    const isTourActiveInSession =
+      typeof window !== 'undefined' &&
+      window.sessionStorage.getItem('tour_active') === 'true';
+    const savedUser =
+      typeof window !== 'undefined'
+        ? window.sessionStorage.getItem('last_toured_user')
+        : null;
+    const isDifferentUser = savedUser && savedUser !== user.email;
+
+    if (
+      shouldTriggerOnLogin ||
+      isDifferentUser ||
+      (lastTouredUserRef.current && lastTouredUserRef.current !== user.email)
+    ) {
+      if (typeof window !== 'undefined') {
+        window.sessionStorage.removeItem('trigger_tour_on_login');
+        window.sessionStorage.setItem('last_toured_user', user.email);
+        window.sessionStorage.setItem('tour_active', 'true');
+        window.sessionStorage.setItem('tour_current_step', '0');
+      }
+      lastTouredUserRef.current = user.email;
+      setCurrentStep(0);
+      setAutoProgress(0);
+      setIsOpen(true);
+      setIsMinimized(false);
+
+      // Auto-navigate to first step page
+      const firstStep = tourSteps[0];
+      if (firstStep?.actionHref && pathname !== firstStep.actionHref) {
+        router.push(firstStep.actionHref);
+      }
+    } else if (isTourActiveInSession && !isOpen) {
+      // Resume existing active tour session across route changes
+      const savedStep = parseInt(
+        window.sessionStorage.getItem('tour_current_step') || '0',
+        10
+      );
+      const stepToUse =
+        !isNaN(savedStep) && savedStep >= 0 && savedStep < tourSteps.length
+          ? savedStep
+          : 0;
+      setCurrentStep(stepToUse);
+      setIsOpen(true);
+      lastTouredUserRef.current = user.email;
+    }
+  }, [user?.email, tourSteps, pathname, router, isOpen]);
+
+  // Listen for manual trigger (e.g. Header Interactive Tour button)
+  useEffect(() => {
+    const handleOpen = () => {
+      setCurrentStep(0);
+      setAutoProgress(0);
+      setIsOpen(true);
+      setIsMinimized(false);
+      if (typeof window !== 'undefined') {
+        window.sessionStorage.setItem('tour_active', 'true');
+        window.sessionStorage.setItem('tour_current_step', '0');
+      }
+      const firstStep = tourSteps[0];
+      if (firstStep?.actionHref && pathname !== firstStep.actionHref) {
+        router.push(firstStep.actionHref);
+      }
+    };
+    window.addEventListener('open-site-tour', handleOpen);
+    return () => window.removeEventListener('open-site-tour', handleOpen);
+  }, [tourSteps, pathname, router]);
+
+  // Auto-play timer for hands-free evaluator walkthrough
+  useEffect(() => {
+    if (!isOpen || !isAutoPlaying || isHovered) return;
+
+    const interval = setInterval(() => {
+      setAutoProgress((prev) => {
+        if (prev >= 100) {
+          if (currentStep < tourSteps.length - 1) {
+            goToStep(currentStep + 1);
+            return 0;
+          } else {
+            setIsAutoPlaying(false);
+            return 100;
+          }
+        }
+        return prev + 2; // Increments ~6 seconds per step
+      });
+    }, 120);
+
+    return () => clearInterval(interval);
+  }, [isOpen, isAutoPlaying, isHovered, currentStep, tourSteps.length]);
+
+  if (!isOpen) return null;
+
+  const step = tourSteps[currentStep] || tourSteps[0];
+  const Icon = step.icon;
+
+  // Minimized floating pill view
+  if (isMinimized) {
+    return (
+      <div
+        onClick={() => setIsMinimized(false)}
+        className="fixed bottom-5 right-5 z-50 flex items-center gap-2.5 bg-slate-900 text-white px-4 py-2.5 rounded-2xl shadow-2xl border border-slate-700/80 cursor-pointer hover:bg-slate-800 transition-all active:scale-95 animate-fade-in group"
+        title="Click to expand Platform Tour"
+      >
+        <div className={`w-6 h-6 rounded-lg flex items-center justify-center flex-shrink-0 ${step.color}`}>
+          <Icon className="w-3.5 h-3.5" />
+        </div>
+        <div className="flex flex-col">
+          <span className="text-[10px] text-amber-300 font-bold uppercase tracking-wider">
+            {tourConfig.roleBadge} · Step {currentStep + 1} of {tourSteps.length}
+          </span>
+          <span className="text-xs font-semibold text-white max-w-[190px] truncate">{step.title}</span>
+        </div>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setIsMinimized(false);
+          }}
+          className="text-[11px] font-bold bg-primary-600 hover:bg-primary-500 text-white px-2.5 py-1 rounded-lg ml-1 flex items-center gap-1 cursor-pointer"
+        >
+          <Maximize2 className="w-3 h-3" />
+          <span>Expand</span>
+        </button>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            handleClose();
+          }}
+          className="p-1 text-slate-400 hover:text-white rounded-md cursor-pointer ml-0.5"
+          title="Exit Tour"
+        >
+          <X className="w-3.5 h-3.5" />
+        </button>
+      </div>
+    );
+  }
+
+  // Expanded floating interactive card view
   return (
-    <>
-      {/* Tour Modal Overlay (Triggered via Header Interactive Tour Button) */}
-      {isOpen && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-xl w-full border border-gray-200 overflow-hidden flex flex-col animate-scale-in">
-            {/* Header */}
-            <div className="p-5 bg-slate-900 text-white flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${step.color}`}>
-                  <Icon className="w-5 h-5" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-bold uppercase tracking-wider bg-slate-800 text-amber-300 px-2 py-0.5 rounded border border-slate-700">
-                      {step.badge}
-                    </span>
-                    <span className="text-[10px] font-medium text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-800/40">
-                      {tourConfig.roleBadge}
-                    </span>
-                    <span className="text-xs text-slate-400">
-                      {currentStep + 1} / {tourSteps.length}
-                    </span>
-                  </div>
-                  <h3 className="text-base font-bold text-white mt-1 leading-snug">{step.title}</h3>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsOpen(false)}
-                className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
-                title="Close Tour"
-              >
-                <X className="w-4 h-4" />
-              </button>
+    <div
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      className="fixed bottom-4 right-4 sm:bottom-5 sm:right-5 z-50 w-[calc(100vw-2rem)] sm:w-[460px] max-w-[460px] bg-white rounded-2xl shadow-2xl border border-slate-300/80 overflow-hidden flex flex-col animate-slide-up"
+    >
+      {/* Animated Stepper Progress Bar */}
+      <div className="h-1.5 bg-slate-100 w-full relative overflow-hidden">
+        <div
+          className="h-full bg-gradient-to-r from-emerald-500 via-primary-500 to-indigo-600 transition-all duration-300"
+          style={{ width: `${((currentStep + 1) / tourSteps.length) * 100}%` }}
+        />
+        {isAutoPlaying && (
+          <div
+            className="absolute inset-y-0 left-0 bg-amber-400/80 transition-all duration-100"
+            style={{ width: `${autoProgress}%` }}
+          />
+        )}
+      </div>
+
+      {/* Header */}
+      <div className="px-4 py-3 bg-slate-900 text-white flex items-center justify-between">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 ${step.color}`}>
+            <Icon className="w-4 h-4" />
+          </div>
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-[10px] font-bold uppercase tracking-wider bg-slate-800 text-amber-300 px-2 py-0.5 rounded border border-slate-700">
+                {tourConfig.roleBadge}
+              </span>
+              <span className="text-[10px] font-semibold text-emerald-300 bg-emerald-950/70 px-1.5 py-0.5 rounded border border-emerald-800/50">
+                Step {currentStep + 1}/{tourSteps.length}
+              </span>
             </div>
-
-            {/* Content Body */}
-            <div className="p-6 space-y-4">
-              <p className="text-sm text-gray-700 leading-relaxed">{step.description}</p>
-
-              {/* Highlight bullet points */}
-              <div className="p-4 bg-gray-50 rounded-xl border border-gray-100 space-y-2">
-                <p className="text-xs font-bold text-gray-900 uppercase tracking-wide">Key Capabilities:</p>
-                <ul className="space-y-1.5">
-                  {step.features.map((feat, idx) => (
-                    <li key={idx} className="flex items-start gap-2 text-xs text-gray-600">
-                      <span className="w-1.5 h-1.5 rounded-full bg-primary-600 mt-1.5 flex-shrink-0" />
-                      <span>{feat}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-
-              {/* Try this feature button */}
-              {step.actionHref && (
-                <div className="pt-1 flex items-center justify-between">
-                  <button
-                    type="button"
-                    onClick={() => handleActionClick(step.actionHref!)}
-                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary-700 hover:text-primary-800 bg-primary-50 hover:bg-primary-100/70 border border-primary-200 px-3.5 py-1.5 rounded-lg transition-colors cursor-pointer"
-                  >
-                    <span>{step.actionLabel || 'Navigate to this Page'}</span>
-                    <ArrowRight className="w-3.5 h-3.5" />
-                  </button>
-                  <span className="text-[11px] text-gray-400 italic">
-                    Tailored for {tourConfig.roleTitle}
-                  </span>
-                </div>
-              )}
-            </div>
-
-            {/* Footer Navigation */}
-            <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex items-center justify-between">
-              {/* Step dots */}
-              <div className="flex items-center gap-1.5">
-                {tourSteps.map((_, i) => (
-                  <button
-                    key={i}
-                    onClick={() => setCurrentStep(i)}
-                    className={`h-2 rounded-full transition-all cursor-pointer ${
-                      i === currentStep ? 'w-6 bg-primary-600' : 'w-2 bg-gray-300 hover:bg-gray-400'
-                    }`}
-                    title={`Go to step ${i + 1}`}
-                  />
-                ))}
-              </div>
-
-              <div className="flex items-center gap-2">
-                {currentStep > 0 && (
-                  <button
-                    type="button"
-                    onClick={handlePrev}
-                    className="btn-secondary text-xs py-1.5 px-3 flex items-center gap-1 cursor-pointer"
-                  >
-                    <ChevronLeft className="w-3.5 h-3.5" /> Previous
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={handleNext}
-                  className="btn-primary text-xs py-1.5 px-4 flex items-center gap-1 shadow-sm cursor-pointer"
-                >
-                  <span>{currentStep === tourSteps.length - 1 ? 'Finish Tour' : 'Next'}</span>
-                  {currentStep < tourSteps.length - 1 && <ChevronRight className="w-3.5 h-3.5" />}
-                </button>
-              </div>
-            </div>
+            <h3 className="text-xs sm:text-sm font-bold text-white mt-0.5 truncate leading-tight">
+              {step.title}
+            </h3>
           </div>
         </div>
-      )}
-    </>
+
+        <div className="flex items-center gap-1 flex-shrink-0 ml-2">
+          {/* Auto-Play Toggle */}
+          <button
+            type="button"
+            onClick={() => {
+              setIsAutoPlaying(!isAutoPlaying);
+              setAutoProgress(0);
+            }}
+            className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${
+              isAutoPlaying
+                ? 'bg-amber-500 text-slate-950 hover:bg-amber-400'
+                : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
+            }`}
+            title={isAutoPlaying ? 'Pause Auto Walkthrough' : 'Start Auto Walkthrough (advances every 6s)'}
+          >
+            {isAutoPlaying ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
+            <span>{isAutoPlaying ? 'Auto' : 'Play'}</span>
+          </button>
+
+          {/* Minimize */}
+          <button
+            type="button"
+            onClick={() => setIsMinimized(true)}
+            className="p-1 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+            title="Minimize Tour Guide"
+          >
+            <Minimize2 className="w-3.5 h-3.5" />
+          </button>
+
+          {/* Exit Tour */}
+          <button
+            type="button"
+            onClick={handleClose}
+            className="p-1 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+            title="Exit Tour"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </div>
+
+      {/* Body Content */}
+      <div className="p-4 space-y-3 bg-white">
+        <p className="text-xs text-gray-700 leading-relaxed">{step.description}</p>
+
+        {/* Feature capabilities */}
+        <div className="p-3 bg-slate-50/80 rounded-xl border border-slate-200/60 space-y-1.5">
+          <p className="text-[11px] font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1">
+            <Sparkles className="w-3 h-3 text-amber-600" />
+            Key Live Features on this Page:
+          </p>
+          <ul className="space-y-1">
+            {step.features.map((feat, idx) => (
+              <li key={idx} className="flex items-start gap-1.5 text-xs text-gray-600 leading-snug">
+                <span className="w-1.5 h-1.5 rounded-full bg-primary-600 mt-1.5 flex-shrink-0" />
+                <span>{feat}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        {/* Current Page Indicator */}
+        {step.actionHref && (
+          <div className="flex items-center justify-between text-[11px] pt-0.5 border-t border-gray-100">
+            <span className="text-gray-500 font-medium flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              Showing: <strong className="text-gray-800">{step.actionLabel || step.title}</strong>
+            </span>
+            <span className="text-slate-400 text-[10px] font-mono">{step.actionHref}</span>
+          </div>
+        )}
+      </div>
+
+      {/* Footer Navigation */}
+      <div className="px-4 py-2.5 bg-gray-50/90 border-t border-gray-100 flex items-center justify-between">
+        {/* Stepper dots */}
+        <div className="flex items-center gap-1">
+          {tourSteps.map((_, i) => (
+            <button
+              key={i}
+              onClick={() => goToStep(i)}
+              className={`h-2 rounded-full transition-all cursor-pointer ${
+                i === currentStep ? 'w-5 bg-primary-600' : 'w-2 bg-gray-300 hover:bg-gray-400'
+              }`}
+              title={`Jump to step ${i + 1}`}
+            />
+          ))}
+        </div>
+
+        {/* Step buttons */}
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={handlePrev}
+            disabled={currentStep === 0}
+            className={`px-2.5 py-1 text-xs rounded-lg flex items-center gap-1 font-semibold transition-colors ${
+              currentStep === 0
+                ? 'text-gray-300 cursor-not-allowed'
+                : 'text-gray-700 hover:bg-gray-200/70 cursor-pointer'
+            }`}
+          >
+            <ChevronLeft className="w-3.5 h-3.5" /> Prev
+          </button>
+
+          <button
+            type="button"
+            onClick={handleNext}
+            className="px-3 py-1.5 bg-primary-600 hover:bg-primary-700 text-white text-xs font-bold rounded-lg flex items-center gap-1 shadow-sm active:scale-95 transition-all cursor-pointer"
+          >
+            <span>{currentStep === tourSteps.length - 1 ? 'Finish Tour ✓' : 'Next Step →'}</span>
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }

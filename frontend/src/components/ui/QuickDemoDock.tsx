@@ -108,9 +108,17 @@ export function QuickDemoDock() {
     try {
       // Clear all react-query cache so department/role context never leaks
       qc.clear();
+      if (typeof window !== 'undefined') {
+        window.sessionStorage.setItem('trigger_tour_on_login', 'true');
+        window.sessionStorage.setItem('tour_active', 'true');
+        window.sessionStorage.setItem('tour_current_step', '0');
+      }
       await login(roleObj.email, 'Demo@123');
       setIsOpen(false);
       router.push(roleObj.dest);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('open-site-tour', { detail: { role: roleObj.role, forceStart: true } }));
+      }
     } catch (err) {
       console.error('Failed to switch demo role:', err);
     } finally {

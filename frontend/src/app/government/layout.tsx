@@ -110,7 +110,6 @@ export default function GovernmentLayout({ children }: { children: React.ReactNo
             returnLabel="Go to Applicant Portal"
           />
         </div>
-        <SiteTourGuide />
       </div>
     );
   }
@@ -140,7 +139,6 @@ export default function GovernmentLayout({ children }: { children: React.ReactNo
               returnLabel="Go to Joint Inspection Planner"
             />
           </div>
-          <SiteTourGuide />
         </div>
       );
     }
@@ -164,7 +162,6 @@ export default function GovernmentLayout({ children }: { children: React.ReactNo
             returnLabel="Go to Departmental Scrutiny Queue"
           />
         </div>
-        <SiteTourGuide />
       </div>
     );
   }

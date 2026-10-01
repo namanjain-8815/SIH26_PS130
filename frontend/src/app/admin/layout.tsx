@@ -99,7 +99,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             returnLabel="Go to My Portal"
           />
         </div>
-        <SiteTourGuide />
       </div>
     );
   }

@@ -125,7 +125,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             returnLabel="Go to Department Desk"
           />
         </div>
-        <SiteTourGuide />
       </div>
     );
   }
@@ -148,7 +147,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             returnLabel="Go to Admin Console"
           />
         </div>
-        <SiteTourGuide />
       </div>
     );
   }

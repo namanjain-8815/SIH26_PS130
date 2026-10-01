@@ -155,6 +155,11 @@ export default function LoginPage() {
     setQuickLoginRole(account.roleKey);
     try {
       qc.clear();
+      if (typeof window !== 'undefined') {
+        window.sessionStorage.setItem('trigger_tour_on_login', 'true');
+        window.sessionStorage.setItem('tour_active', 'true');
+        window.sessionStorage.setItem('tour_current_step', '0');
+      }
       await login(account.email, 'Demo@123');
       router.push(account.dest);
     } catch (err: unknown) {
@@ -169,6 +174,11 @@ export default function LoginPage() {
     setLoading(true);
     try {
       qc.clear();
+      if (typeof window !== 'undefined') {
+        window.sessionStorage.setItem('trigger_tour_on_login', 'true');
+        window.sessionStorage.setItem('tour_active', 'true');
+        window.sessionStorage.setItem('tour_current_step', '0');
+      }
       await login(email.trim(), password);
       router.push('/');
     } catch (err: unknown) {
@@ -184,6 +194,11 @@ export default function LoginPage() {
     setRegLoading(true);
     try {
       qc.clear();
+      if (typeof window !== 'undefined') {
+        window.sessionStorage.setItem('trigger_tour_on_login', 'true');
+        window.sessionStorage.setItem('tour_active', 'true');
+        window.sessionStorage.setItem('tour_current_step', '0');
+      }
       await register({
         name: regForm.name.trim(),
         email: regForm.email.trim(),
