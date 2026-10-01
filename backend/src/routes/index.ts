@@ -1,0 +1,38 @@
+import { Router } from 'express';
+import authRoutes from './auth';
+import projectRoutes from './projects';
+import approvalTypeRoutes from './approvalTypes';
+import projectApprovalRoutes from './projectApprovals';
+import documentRoutes from './documents';
+import applicationRoutes from './applications';
+import queryRoutes from './queries';
+import inspectionRoutes from './inspections';
+import slaRoutes from './sla';
+import incentiveRoutes from './incentives';
+import complianceRoutes from './compliance';
+import governmentRoutes from './government';
+import adminRoutes from './admin';
+import notificationRoutes from './notifications';
+import facilitationRoutes from './facilitation';
+import guidanceRoutes from './guidance';
+import digilockerRoutes from './digilocker';
+
+export const router = Router();
+
+router.use('/auth', authRoutes);
+router.use('/', projectRoutes);
+router.use('/', approvalTypeRoutes);
+router.use('/', projectApprovalRoutes);
+router.use('/', documentRoutes);
+router.use('/', applicationRoutes);
+router.use('/', queryRoutes);
+router.use('/', inspectionRoutes);
+router.use('/', slaRoutes);
+router.use('/', incentiveRoutes);
+router.use('/', complianceRoutes);
+router.use('/', guidanceRoutes);
+router.use('/', digilockerRoutes);
+router.use('/government', governmentRoutes);
+router.use('/admin', adminRoutes);
+router.use('/notifications', notificationRoutes);
+router.use('/facilitation', facilitationRoutes);

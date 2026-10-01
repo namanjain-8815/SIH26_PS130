@@ -1,0 +1,888 @@
+import { prisma } from '../lib/prisma';
+import { NotFoundError } from '../lib/errors';
+import { getPrescribedFormForApproval } from './prescribedFormService';
+
+export interface GuidanceAction {
+  label: string;
+  href: string;
+}
+
+export interface GuidanceQuestionAnswer {
+  question_id: string;
+  question: string;
+  category: string;
+  title: string;
+  answer: string;
+  actions: GuidanceAction[];
+  suggested_follow_ups?: string[];
+}
+
+export interface ContextualGuidancePayload {
+  context: {
+    page: string;
+    project_id: string | null;
+    project_name: string | null;
+    application_id: string | null;
+    application_number: string | null;
+    approval_name: string | null;
+    authority: string | null;
+    status: string | null;
+  };
+  suggested_questions: Array<{ id: string; question: string; category: string }>;
+  answers: Record<string, GuidanceQuestionAnswer>;
+  search_match?: GuidanceQuestionAnswer | null;
+}
+
+/**
+ * P1.12 — Deterministic Contextual Guidance Assistant Service
+ * Gathers active project, application, and regulatory state from the database
+ * to provide 100% deterministic, grounded statutory assistance.
+ * Zero external LLMs or API keys required.
+ */
+export async function getContextualGuidance(params: {
+  page?: string;
+  project_id?: string;
+  application_id?: string;
+  approval_type_id?: string;
+  query_text?: string;
+}): Promise<ContextualGuidancePayload> {
+  const page = params.page || 'dashboard';
+
+  // 1. Resolve Project
+  let project: any = null;
+  if (params.project_id) {
+    project = await prisma.project.findUnique({
+      where: { id: params.project_id },
+      include: { organization: true },
+    });
+  }
+
+  // 2. Resolve Application
+  let application: any = null;
+  if (params.application_id) {
+    application = await prisma.application.findUnique({
+      where: { id: params.application_id },
+      include: {
+        project_approval: {
+          include: {
+            approval_type: true,
+            project: { include: { organization: true } },
+          },
+        },
+        department: true,
+        sla_instance: true,
+        application_documents: {
+          include: { document: true },
+        },
+        queries: true,
+      },
+    });
+
+    if (application && !project && application.project_approval?.project) {
+      project = application.project_approval.project;
+    }
+  }
+
+  // Fallback to demo project if no project was specified or found
+  if (!project) {
+    project = await prisma.project.findUnique({
+      where: { id: 'proj-abc-foods-001' },
+      include: { organization: true },
+    });
+  }
+
+  // 3. Resolve Approval Type
+  let approvalType: any = null;
+  if (application?.project_approval?.approval_type) {
+    approvalType = application.project_approval.approval_type;
+  } else if (params.approval_type_id) {
+    approvalType = await prisma.approvalType.findUnique({
+      where: { id: params.approval_type_id },
+    });
+  }
+
+  // 4. Gather Project State Details
+  const projectId = project?.id || 'proj-abc-foods-001';
+  const projectName = project?.name || 'Your Investment Proposal';
+  const appNumber = application?.application_number || null;
+  const appStatus = application?.status || null;
+  const approvalName = approvalType?.name || (application ? 'Statutory Clearance' : null);
+  const authority = approvalType?.authority || application?.department?.name || 'Competent Authority';
+
+  // Load project approvals, dependencies, vault documents, and open queries
+  const [projectApprovals, dependencies, vaultDocs] = await Promise.all([
+    prisma.projectApproval.findMany({
+      where: { project_id: projectId },
+      include: { approval_type: true },
+    }),
+    prisma.approvalDependency.findMany(),
+    prisma.document.findMany({ where: { project_id: projectId } }),
+  ]);
+
+  // Load document requirements for active approval type
+  let docRequirements: any[] = [];
+  if (approvalType) {
+    docRequirements = await prisma.documentRequirement.findMany({
+      where: { approval_type_id: approvalType.id },
+    });
+  }
+
+  // Build the 9 canonical deterministic question-answer templates
+  const answers: Record<string, GuidanceQuestionAnswer> = {};
+
+  // ── Q1: Why is this permission required? ─────────────────────────────────
+  if (approvalType) {
+    const paMatch = projectApprovals.find((pa) => pa.approval_type_id === approvalType.id);
+    const reason = paMatch?.applicability_reason || `Mandatory statutory requirement under ${approvalType.authority} acts.`;
+
+    answers['why_permission_required'] = {
+      question_id: 'why_permission_required',
+      question: 'Why is this permission required?',
+      category: 'Regulatory Basis',
+      title: `Statutory Mandate: ${approvalType.name}`,
+      answer: `**${approvalType.name}** is a legally mandated statutory clearance administered by **${approvalType.authority}**.\n\n• **Statutory Objective**: ${approvalType.purpose || approvalType.description || 'Regulatory compliance verification.'}\n• **Trigger Factor**: ${reason}\n• **Statutory Time Limit**: Configured SLA of **${approvalType.default_sla_days} working days** under Maharashtra Right to Public Services Act.`,
+      actions: [
+        { label: 'View Permission Details', href: '/app/approvals' },
+        ...(application ? [{ label: 'Open Application Dossier', href: `/app/applications/${application.id}` }] : []),
+      ],
+      suggested_follow_ups: ['what_documents_needed', 'what_is_configured_time_limit', 'which_form_should_i_use'],
+    };
+  } else {
+    answers['why_permission_required'] = {
+      question_id: 'why_permission_required',
+      question: 'Why is this permission required?',
+      category: 'Regulatory Basis',
+      title: 'Applicability Determination Engine',
+      answer: `Under Maharashtra single-window rules, clearances are determined dynamically by matching your project's sector (**${project?.sector || 'Industrial'}**), pollution category, water/power load, and district jurisdiction against statutory applicability rules.`,
+      actions: [{ label: 'Review Permissions Roadmap', href: '/app/approvals' }],
+      suggested_follow_ups: ['what_should_i_do_next', 'which_approvals_can_start_now'],
+    };
+  }
+
+  // ── Q2: What documents are needed? ──────────────────────────────────────
+  if (approvalType && docRequirements.length > 0) {
+    const docLines = docRequirements.map((dr) => {
+      const inVault = vaultDocs.find(
+        (vd) =>
+          vd.document_type.toLowerCase() === dr.document_type.toLowerCase() ||
+          vd.file_name.toLowerCase().includes(dr.document_type.toLowerCase().replace(/_/g, ' '))
+      );
+      const isAttached = application?.application_documents?.some(
+        (ad: any) => ad.document?.document_type === dr.document_type
+      );
+
+      let statusTag = '⚠️ Missing';
+      if (isAttached) statusTag = '✅ Attached';
+      else if (inVault) statusTag = '⚡ Ready in Vault (1-click reuse)';
+
+      return `• **${dr.document_type.replace(/_/g, ' ')}** (${dr.mandatory ? 'Mandatory' : 'Optional'}): ${statusTag}`;
+    });
+
+    answers['what_documents_needed'] = {
+      question_id: 'what_documents_needed',
+      question: 'What documents are needed?',
+      category: 'Documentation',
+      title: `Required Documents for ${approvalType.name}`,
+      answer: `The following documents are specified for **${approvalType.name}**:\n\n${docLines.join('\n')}\n\n*All uploaded files must be in PDF format (max 10MB) and undergo automated pre-validation before final submission.*`,
+      actions: [
+        { label: 'Open Document Vault', href: '/app/documents' },
+        ...(application ? [{ label: 'Attach Documents to Application', href: `/app/applications/${application.id}?tab=documents` }] : []),
+      ],
+      suggested_follow_ups: ['which_form_should_i_use', 'why_application_blocked', 'what_should_i_do_next'],
+    };
+  } else {
+    answers['what_documents_needed'] = {
+      question_id: 'what_documents_needed',
+      question: 'What documents are needed?',
+      category: 'Documentation',
+      title: 'Common Document Vault Requirements',
+      answer: `Industrial proposals typically require standard corporate proofs:\n\n• **Entity Proof**: Incorporation Certificate, PAN Card, Partnership Deed.\n• **Site Title**: MIDC Allotment Letter, Registered Lease Deed, 7/12 Extract.\n• **Technical Layouts**: Scaled Factory Layout Plan, Machinery Layout, Water Balance Diagram.\n• **Statutory NOCs**: MPCB Consent to Establish, Fire Services Provisional NOC.`,
+      actions: [{ label: 'Manage Document Vault', href: '/app/documents' }],
+      suggested_follow_ups: ['what_should_i_do_next', 'which_approvals_can_start_now'],
+    };
+  }
+
+  // ── Q3: Why is this application blocked? ─────────────────────────────────
+  const activeApprovalId = approvalType?.id || null;
+  const activePrereqs = dependencies
+    .filter((d) => d.dependent_approval_type_id === activeApprovalId && d.dependency_type === 'PREREQUISITE')
+    .map((d) => {
+      const pa = projectApprovals.find((p) => p.approval_type_id === d.prerequisite_approval_type_id);
+      return {
+        id: d.prerequisite_approval_type_id,
+        name: pa?.approval_type?.name || 'Prerequisite Clearance',
+        status: pa?.status || 'NOT_STARTED',
+        is_completed: pa?.status === 'COMPLETED',
+      };
+    });
+
+  const missingPrereqs = activePrereqs.filter((p) => !p.is_completed);
+
+  if (missingPrereqs.length > 0) {
+    const list = missingPrereqs.map((p) => `• **${p.name}** (Current Status: *${p.status}*)`).join('\n');
+    answers['why_application_blocked'] = {
+      question_id: 'why_application_blocked',
+      question: 'Why is this application blocked?',
+      category: 'Dependencies',
+      title: 'Prerequisite Approval Dependency Blockers',
+      answer: `This application cannot be processed until the following statutory prerequisite clearance(s) are officially granted:\n\n${list}\n\n*Statutory Rule: Downstream applications (such as Factory License) cannot be legally processed before upstream approvals (such as Building Plan Approval or MPCB Consent) are in place.*`,
+      actions: [
+        { label: 'View Dependency Graph', href: `/app/projects/${projectId}/dependency-graph` },
+        { label: 'Check Prerequisites Status', href: '/app/approvals' },
+      ],
+      suggested_follow_ups: ['which_approvals_can_start_now', 'what_should_i_do_next'],
+    };
+  } else {
+    answers['why_application_blocked'] = {
+      question_id: 'why_application_blocked',
+      question: 'Why is this application blocked?',
+      category: 'Dependencies',
+      title: 'No Dependency Blockers Detected',
+      answer: `This clearance is **NOT blocked by prerequisites**! All upstream statutory dependencies are satisfied. You may proceed with application preparation, document attachment, and submission.`,
+      actions: [
+        ...(application ? [{ label: 'Continue Application Form', href: `/app/applications/${application.id}` }] : [{ label: 'Start Application', href: '/app/approvals' }]),
+      ],
+      suggested_follow_ups: ['what_documents_needed', 'what_should_i_do_next'],
+    };
+  }
+
+  // ── Q4: What should I do next? ──────────────────────────────────────────
+  let nextActionText = '';
+  let nextActions: GuidanceAction[] = [];
+
+  if (application) {
+    const openQueries = (application.queries || []).filter((q: any) => q.status === 'OPEN');
+    const missingMandatory = docRequirements.filter(
+      (dr) =>
+        dr.mandatory &&
+        !application.application_documents?.some((ad: any) => ad.document?.document_type === dr.document_type)
+    );
+
+    if (openQueries.length > 0) {
+      nextActionText = `⚠️ **Urgent Action**: You have **${openQueries.length} open clarification query** from ${authority}. Respond promptly on the Queries tab to avoid pausing your SLA clock.`;
+      nextActions = [{ label: 'Respond to Open Query', href: `/app/applications/${application.id}?tab=queries` }];
+    } else if (missingMandatory.length > 0) {
+      nextActionText = `📄 **Attach Missing Proofs**: You need to attach **${missingMandatory.length} mandatory documents** before this application can pass pre-submission readiness.`;
+      nextActions = [{ label: 'Attach Documents', href: `/app/applications/${application.id}?tab=documents` }];
+    } else if (application.status === 'IN_PREPARATION') {
+      nextActionText = `✅ **Ready for Review**: All prerequisites and mandatory documents are attached. Inspect your prefilled application and submit it to the Competent Authority.`;
+      nextActions = [{ label: 'Review & Submit Form', href: `/app/applications/${application.id}` }];
+    } else {
+      nextActionText = `⏳ **Application Lodged**: Application **${application.application_number}** is under official departmental review (${application.status}). Track inspection and decision timelines.`;
+      nextActions = [{ label: 'Track Approval Status', href: `/app/projects/${projectId}/approval-tracker` }];
+    }
+  } else {
+    nextActionText = `🚀 **Proposal Progress**: Inspect your Project Control Centre to review overall clearance readiness, start eligible parallel applications, and verify required documents in the Vault.`;
+    nextActions = [
+      { label: 'Project Control Centre', href: `/app/projects/${projectId}` },
+      { label: 'Approval Tracker & SLA Timeline', href: `/app/projects/${projectId}/approval-tracker` },
+    ];
+  }
+
+  answers['what_should_i_do_next'] = {
+    question_id: 'what_should_i_do_next',
+    question: 'What should I do next?',
+    category: 'Next Best Action',
+    title: 'Recommended Next Action',
+    answer: nextActionText,
+    actions: nextActions,
+    suggested_follow_ups: ['which_approvals_can_start_now', 'what_documents_needed', 'what_is_configured_time_limit'],
+  };
+
+  // ── Q5: Which approvals can start now? ───────────────────────────────────
+  // Find project approvals whose prerequisites are all completed
+  const eligibleToStart = projectApprovals.filter((pa) => {
+    if (pa.status === 'COMPLETED' || pa.status === 'IN_PROGRESS') return false;
+    const prereqs = dependencies.filter(
+      (d) => d.dependent_approval_type_id === pa.approval_type_id && d.dependency_type === 'PREREQUISITE'
+    );
+    return prereqs.every((pr) => {
+      const upstream = projectApprovals.find((p) => p.approval_type_id === pr.prerequisite_approval_type_id);
+      return upstream?.status === 'COMPLETED';
+    });
+  });
+
+  if (eligibleToStart.length > 0) {
+    const list = eligibleToStart.map((pa) => `• **${pa.approval_type.name}** (${pa.approval_type.authority})`).join('\n');
+    answers['which_approvals_can_start_now'] = {
+      question_id: 'which_approvals_can_start_now',
+      question: 'Which approvals can start now?',
+      category: 'Parallel Processing',
+      title: 'Eligible Clearances Ready to Start',
+      answer: `The following **${eligibleToStart.length} clearance(s)** have all prerequisite dependencies satisfied and can proceed in parallel right now:\n\n${list}\n\n*You can use the 'Start Eligible Applications' button on the Permissions page to safely initialize these workflows in one click without duplicate submissions.*`,
+      actions: [
+        { label: 'Start Eligible Applications', href: '/app/approvals' },
+        { label: 'View Project Submission Centre', href: `/app/projects/${projectId}/submission-centre` },
+      ],
+      suggested_follow_ups: ['what_should_i_do_next', 'why_application_blocked'],
+    };
+  } else {
+    answers['which_approvals_can_start_now'] = {
+      question_id: 'which_approvals_can_start_now',
+      question: 'Which approvals can start now?',
+      category: 'Parallel Processing',
+      title: 'Parallel Clearance Eligibility',
+      answer: `All eligible clearances without dependencies have already been initiated or completed! Any remaining clearances require awaiting prerequisite clearance decisions before they can be unlocked.`,
+      actions: [
+        { label: 'Track Approvals Timeline', href: `/app/projects/${projectId}/approval-tracker` },
+      ],
+      suggested_follow_ups: ['what_should_i_do_next', 'what_is_configured_time_limit'],
+    };
+  }
+
+  // ── Q6: Which document failed validation? ────────────────────────────────
+  const invalidDocs = (application?.application_documents || []).filter(
+    (ad: any) => ad.validation_status === 'INVALID' || ad.validation_status === 'REJECTED'
+  );
+
+  if (invalidDocs.length > 0) {
+    const list = invalidDocs
+      .map((ad: any) => `• **${ad.document?.file_name || 'Document'}**: ${ad.validation_notes || 'Failed integrity check'}`)
+      .join('\n');
+
+    answers['which_document_failed_validation'] = {
+      question_id: 'which_document_failed_validation',
+      question: 'Which document failed validation?',
+      category: 'Validation Diagnostics',
+      title: 'Document Validation Failures',
+      answer: `The following attached document(s) have failed automated validation checks:\n\n${list}\n\nPlease replace these documents in your Document Vault before submitting.`,
+      actions: [
+        { label: 'Replace in Document Vault', href: '/app/documents' },
+        ...(application ? [{ label: 'Application Documents Tab', href: `/app/applications/${application.id}?tab=documents` }] : []),
+      ],
+      suggested_follow_ups: ['what_documents_needed', 'what_should_i_do_next'],
+    };
+  } else {
+    answers['which_document_failed_validation'] = {
+      question_id: 'which_document_failed_validation',
+      question: 'Which document failed validation?',
+      category: 'Validation Diagnostics',
+      title: 'Zero Document Validation Failures',
+      answer: `**All validated documents are in good standing!** No expired certificates, format discrepancies, or integrity check failures were detected across your attached proofs.`,
+      actions: [
+        { label: 'View Document Vault', href: '/app/documents' },
+      ],
+      suggested_follow_ups: ['what_documents_needed', 'what_should_i_do_next'],
+    };
+  }
+
+  // ── Q7: Which form should I use? ─────────────────────────────────────────
+  if (approvalType) {
+    const prescribedForm = await getPrescribedFormForApproval(approvalType.id);
+
+    if (prescribedForm) {
+      answers['which_form_should_i_use'] = {
+        question_id: 'which_form_should_i_use',
+        question: 'Which form should I use?',
+        category: 'Prescribed Templates',
+        title: `Official Application Format: ${prescribedForm.form_name}`,
+        answer: `Use the verified statutory format **${prescribedForm.form_name}** prescribed by **${prescribedForm.authority}**.\n\n• **Provenance**: Grounded in official government sources (${prescribedForm.source_label}).\n• **Format Type**: ${prescribedForm.is_online_application ? 'Online Statutory Application Portal' : 'Official Prescribed PDF Template'}\n• **Status**: ${prescribedForm.provenance_status}`,
+        actions: [
+          ...((prescribedForm.file_path || prescribedForm.source_url) ? [{ label: 'Download Official Form PDF', href: `/api/guidance/prescribed-forms/${prescribedForm.id}/download` }] : []),
+          ...(prescribedForm.official_online_url ? [{ label: 'Open Official Authority Portal', href: prescribedForm.official_online_url }] : []),
+        ],
+        suggested_follow_ups: ['what_documents_needed', 'why_permission_required'],
+      };
+    } else {
+      answers['which_form_should_i_use'] = {
+        question_id: 'which_form_should_i_use',
+        question: 'Which form should I use?',
+        category: 'Prescribed Templates',
+        title: 'Single Window Common Application Form',
+        answer: `This approval clearance utilizes the integrated **Common Application Form (CAF)**. Master enterprise parameters from your Project Profile are pre-populated automatically, requiring only clearance-specific operational parameters.`,
+        actions: [
+          ...(application ? [{ label: 'Fill Application Form', href: `/app/applications/${application.id}` }] : [{ label: 'View Approvals', href: '/app/approvals' }]),
+        ],
+        suggested_follow_ups: ['what_documents_needed', 'what_should_i_do_next'],
+      };
+    }
+  } else {
+    answers['which_form_should_i_use'] = {
+      question_id: 'which_form_should_i_use',
+      question: 'Which form should I use?',
+      category: 'Prescribed Templates',
+      title: 'Prescribed Forms & Application Formats',
+      answer: `MAITRI Single Window supports verified statutory forms (such as MPCB Combined Consent Form, DISH Factory License Form 2, and FSSAI Form B) alongside the unified digital Common Application Form.`,
+      actions: [{ label: 'Browse Approval Directory', href: '/app/approval-directory' }],
+      suggested_follow_ups: ['what_documents_needed', 'which_approvals_can_start_now'],
+    };
+  }
+
+  // ── Q8: What is the configured time limit? ──────────────────────────────
+  const defaultSlaDays = approvalType?.default_sla_days || 30;
+  const slaInstance = application?.sla_instance || null;
+
+  let slaExplanation = `Under the **Maharashtra Right to Public Services Act (RTS)**:\n\n• **Statutory Timeline**: **${defaultSlaDays} working days** from official submission.\n• **Clock Start**: Triggered on formal departmental submission.\n• **Query Clock Suspension**: If an officer raises a clarification query, the statutory countdown stops until the applicant responds.\n• **Deemed Approval / Escalation**: Unresolved applications breaching the timeline are escalated to the Empowered Committee under the District Collector.`;
+
+  if (slaInstance) {
+    slaExplanation += `\n\n**Current Application SLA Status**:\n• Status: **${slaInstance.status}**\n• Elapsed: **${slaInstance.elapsed_days || 0} days**\n• Days Remaining: **${slaInstance.days_remaining ?? 'N/A'} days**`;
+  }
+
+  answers['what_is_configured_time_limit'] = {
+    question_id: 'what_is_configured_time_limit',
+    question: 'What is the configured time limit?',
+    category: 'SLA & Timelines',
+    title: `Statutory Time Limit (${defaultSlaDays} Days)`,
+    answer: slaExplanation,
+    actions: [
+      { label: 'View Approval Tracker & SLA Countdown', href: `/app/projects/${projectId}/approval-tracker` },
+      ...(application ? [{ label: 'View Application Timeline', href: `/app/applications/${application.id}?tab=timeline` }] : []),
+    ],
+    suggested_follow_ups: ['what_should_i_do_next', 'how_do_i_respond_to_query'],
+  };
+
+  // ── Q9: How do I respond to this query? ─────────────────────────────────
+  const openQueries = (application?.queries || []).filter((q: any) => q.status === 'OPEN');
+
+  if (openQueries.length > 0) {
+    const queryList = openQueries
+      .map((q: any) => `• **Query #${q.id.slice(-6)}**: "${q.subject}" — ${q.description}`)
+      .join('\n');
+
+    answers['how_do_i_respond_to_query'] = {
+      question_id: 'how_do_i_respond_to_query',
+      question: 'How do I respond to this query?',
+      category: 'Clarifications',
+      title: `Responding to Departmental Queries (${openQueries.length} Open)`,
+      answer: `The reviewing officer has requested clarification:\n\n${queryList}\n\n**Steps to Respond**:\n1. Click **View Open Query** below.\n2. Review the technical defect or document requested.\n3. Type your clarification response and attach supporting proofs from the Document Vault.\n4. Click **Submit Response**. The reviewing officer will be notified and the SLA clock will resume.`,
+      actions: [
+        { label: 'View Open Query & Submit Response', href: `/app/applications/${application.id}?tab=queries` },
+      ],
+      suggested_follow_ups: ['what_is_configured_time_limit', 'what_should_i_do_next'],
+    };
+  } else {
+    answers['how_do_i_respond_to_query'] = {
+      question_id: 'how_do_i_respond_to_query',
+      question: 'How do I respond to this query?',
+      category: 'Clarifications',
+      title: 'Query Response Procedure',
+      answer: `There are currently **zero open queries** on this file! If a Competent Authority officer raises a clarification in the future, you will receive an instant notification alert, and a dedicated response box will unlock on your application workspace.`,
+      actions: [
+        ...(application ? [{ label: 'Queries Tab', href: `/app/applications/${application.id}?tab=queries` }] : [{ label: 'Investor Assistance', href: '/app/assistance' }]),
+      ],
+      suggested_follow_ups: ['what_should_i_do_next', 'what_is_configured_time_limit'],
+    };
+  }
+
+  // 5. Build Suggested Questions list tailored to active page
+  let suggestedQuestionIds: string[] = [];
+
+  if (page.includes('application') || application) {
+    suggestedQuestionIds = [
+      'why_permission_required',
+      'what_documents_needed',
+      'why_application_blocked',
+      'what_should_i_do_next',
+      'which_form_should_i_use',
+      'what_is_configured_time_limit',
+      'how_do_i_respond_to_query',
+    ];
+  } else if (page.includes('tracker') || page.includes('timeline')) {
+    suggestedQuestionIds = [
+      'what_should_i_do_next',
+      'which_approvals_can_start_now',
+      'why_application_blocked',
+      'what_is_configured_time_limit',
+      'why_permission_required',
+    ];
+  } else if (page.includes('document')) {
+    suggestedQuestionIds = [
+      'which_document_failed_validation',
+      'what_documents_needed',
+      'what_should_i_do_next',
+      'which_form_should_i_use',
+    ];
+  } else if (page.includes('directory') || page.includes('wizard')) {
+    suggestedQuestionIds = [
+      'why_permission_required',
+      'which_approvals_can_start_now',
+      'which_form_should_i_use',
+      'what_is_configured_time_limit',
+      'what_should_i_do_next',
+    ];
+  } else {
+    // Default dashboard
+    suggestedQuestionIds = [
+      'what_should_i_do_next',
+      'which_approvals_can_start_now',
+      'what_documents_needed',
+      'what_is_configured_time_limit',
+      'why_permission_required',
+    ];
+  }
+
+  const suggestedQuestions = suggestedQuestionIds
+    .map((qid) => answers[qid])
+    .filter(Boolean)
+    .map((ans) => ({
+      id: ans.question_id,
+      question: ans.question,
+      category: ans.category,
+    }));
+
+  // 6. Free-form query keyword / intention matching
+  let searchMatch: GuidanceQuestionAnswer | null = null;
+  if (params.query_text) {
+    const rawLower = params.query_text.toLowerCase().trim();
+    const q = rawLower.replace(/[?!.,;:'"()]/g, ' ').replace(/\s+/g, ' ').trim();
+    // Common greetings and polite user interactions
+    if (
+      q === 'hello' ||
+      q === 'hi' ||
+      q === 'hii' ||
+      q === 'hey' ||
+      q === 'namaste' ||
+      q === 'namaskar' ||
+      q === 'pranam' ||
+      q === 'vanakkam' ||
+      q === 'adaab' ||
+      q.startsWith('hello') ||
+      q.startsWith('hi ') ||
+      q.startsWith('hey ') ||
+      q.includes('good morning') ||
+      q.includes('good afternoon') ||
+      q.includes('good evening')
+    ) {
+      searchMatch = {
+        question_id: 'greeting_hello',
+        question: params.query_text,
+        category: 'Assistant Support',
+        title: 'Welcome to Maharashtra Single Window Assistant 👋',
+        answer: `Hello! I am your Single Window **Statutory Guidance Assistant**.\n\nI am tracking **${projectName}** in real time. How can I help streamline your approvals today?\n\n• Check required proofs and missing documents in your Vault.\n• Verify which parallel approvals can start right now.\n• Review Right to Public Services Act (RTS) statutory deadlines.\n• Prepare or review your Common Application Form (CAF).`,
+        actions: [
+          { label: 'Check Document Vault', href: '/app/documents' },
+          { label: 'View All Clearances', href: '/app/approvals' },
+          { label: 'Incentive Schemes', href: '/app/incentives' },
+        ],
+        suggested_follow_ups: [
+          'What documents are needed?',
+          'Which approvals can start now?',
+          'What is the configured time limit?',
+        ],
+      };
+    } else if (
+      q === 'how are you' ||
+      q === 'how are u' ||
+      q === 'how r u' ||
+      q === 'hru' ||
+      q === 'how do you do' ||
+      q === 'hows it going' ||
+      q === 'how is it going' ||
+      q === 'how are you doing' ||
+      q === 'how are things' ||
+      q === 'whats up' ||
+      q === 'what s up' ||
+      q === 'sup' ||
+      q.includes('how are you') ||
+      q.includes('how are u') ||
+      q.includes('how r u') ||
+      q.includes('how do you do') ||
+      q.includes('how is it going') ||
+      q.includes('hows it going') ||
+      q.includes('whats up')
+    ) {
+      searchMatch = {
+        question_id: 'greeting_how_are_you',
+        question: params.query_text,
+        category: 'Assistant Support',
+        title: 'Doing Great & Ready to Help! ⚡',
+        answer: `I am doing wonderful, thank you for asking! 😊 All Single Window clearance engines, regulatory rule evaluators, and statutory time limit monitors are active and connected.\n\nCurrently monitoring **${projectName}**. What would you like to explore today?`,
+        actions: [
+          { label: 'View Clearances Status', href: '/app/approvals' },
+          { label: 'Open Document Detail Centre', href: '/app/documents' },
+        ],
+        suggested_follow_ups: [
+          'What should I do next?',
+          'Which approvals can start now?',
+          'What documents are needed?',
+        ],
+      };
+    } else if (
+      q === 'are you there' ||
+      q === 'are u there' ||
+      q === 'you there' ||
+      q === 'are you online' ||
+      q.includes('are you there') ||
+      q.includes('are u there')
+    ) {
+      searchMatch = {
+        question_id: 'greeting_liveness',
+        question: params.query_text,
+        category: 'Assistant Support',
+        title: 'Right Here & Standing By! 🌟',
+        answer: `Yes, I am right here and ready to assist you! 24/7 assistance is active for **${projectName}**.\n\nWhether you need to check which approvals can run in parallel, upload verified proofs, or review statutory RTS time limits, just let me know!`,
+        actions: [
+          { label: 'Permissions Roadmap', href: '/app/approvals' },
+          { label: 'Document Vault', href: '/app/documents' },
+        ],
+        suggested_follow_ups: [
+          'What should I do next?',
+          'Which approvals can start now?',
+          'What is the configured time limit?',
+        ],
+      };
+    } else if (
+      q.includes('who are you') ||
+      q.includes('what is your name') ||
+      q.includes('who made you') ||
+      q.includes('are you ai') ||
+      q.includes('are you a bot')
+    ) {
+      searchMatch = {
+        question_id: 'greeting_identity',
+        question: params.query_text,
+        category: 'Assistant Support',
+        title: 'Udyog Setu Statutory Assistant 🏛️',
+        answer: `I am the **Udyog Setu Guidance Assistant** — your interactive digital clearance guide built for the Government of Maharashtra's Single Window System.\n\nI help entrepreneurs and department officers track statutory prerequisites, upload compliant documents, and eliminate bureaucratic bottlenecks.`,
+        actions: [
+          { label: 'View Clearances Roadmap', href: '/app/approvals' },
+          { label: 'Common Application Form', href: '/app/projects' },
+        ],
+        suggested_follow_ups: [
+          'What can you do?',
+          'Which approvals can start now?',
+          'What is the configured time limit?',
+        ],
+      };
+    } else if (q === 'test' || q === 'testing' || q === 'ping') {
+      searchMatch = {
+        question_id: 'greeting_test',
+        question: params.query_text,
+        category: 'Assistant Support',
+        title: 'System Operational · 100% Responsive 🚀',
+        answer: `Connection verified! All clearance databases, rule engines, and verification services for **${projectName}** are responsive and ready.`,
+        actions: [
+          { label: 'Open Dashboard', href: '/app/dashboard' },
+          { label: 'Permissions & Approvals', href: '/app/approvals' },
+        ],
+        suggested_follow_ups: [
+          'Which approvals can start now?',
+          'What documents are needed?',
+        ],
+      };
+    } else if (q === 'thanks' || q === 'thank you' || q === 'thank u' || q === 'thx' || q.startsWith('thank')) {
+      searchMatch = {
+        question_id: 'greeting_thanks',
+        question: params.query_text,
+        category: 'Assistant Support',
+        title: "You're Very Welcome! 🙏",
+        answer: `Glad I could help! I am always here to assist you throughout your Single Window regulatory journey for **${projectName}**.\n\nLet me know if you would like to check statutory time limits, pre-validate documents, or start parallel clearances.`,
+        actions: [
+          { label: 'Dashboard Overview', href: '/app/dashboard' },
+          { label: 'View Permissions', href: '/app/approvals' },
+        ],
+        suggested_follow_ups: [
+          'What should I do next?',
+          'Which approvals can start now?',
+        ],
+      };
+    } else if (q === 'ok' || q === 'okay' || q === 'got it' || q === 'understood' || q === 'cool' || q === 'great' || q === 'awesome' || q === 'perfect') {
+      searchMatch = {
+        question_id: 'greeting_ok',
+        question: params.query_text,
+        category: 'Assistant Support',
+        title: 'Understood 👍',
+        answer: `Great! Let me know if you would like to review:\n• **Document Vault**: Upload or verify corporate proofs\n• **Parallel Clearances**: Fast-track independent statutory approvals\n• **Specified Time Limits**: Maharashtra RTS deemed approval countdowns`,
+        actions: [
+          { label: 'View Permissions Roadmap', href: '/app/approvals' },
+          { label: 'Open Document Vault', href: '/app/documents' },
+        ],
+        suggested_follow_ups: [
+          'Which approvals can start now?',
+          'What should I do next?',
+        ],
+      };
+    } else if (q === 'bye' || q === 'goodbye' || q === 'see you' || q.startsWith('bye')) {
+      searchMatch = {
+        question_id: 'greeting_bye',
+        question: params.query_text,
+        category: 'Assistant Support',
+        title: 'Goodbye! Best of Luck 👋',
+        answer: `Goodbye! Best wishes with the execution of **${projectName}**. The Single Window portal is active 24/7 to receive departmental updates and monitor statutory time limits.`,
+        actions: [
+          { label: 'Dashboard', href: '/app/dashboard' },
+        ],
+      };
+    } else if (q.includes('who are you') || q.includes('what can you do') || q.includes('help')) {
+      searchMatch = {
+        question_id: 'greeting_who_are_you',
+        question: params.query_text,
+        category: 'Assistant Support',
+        title: 'Single Window Clearance Assistant Capabilities',
+        answer: `I am your digital regulatory guide for industrial approvals in Maharashtra (MAITRI 2.0).\n\n**Here is what I can do for you**:\n1. **Document Validation**: Check if your documents meet MIDC, MPCB, and DISH statutory standards.\n2. **Dependency Resolution**: Explain why an application might be waiting on prerequisite clearances.\n3. **Parallel Processing**: Identify clearances that can proceed concurrently to save time.\n4. **Statutory RTS Deadlines**: Track deemed approval countdowns under Maharashtra Right to Services.\n5. **Department Query Guidance**: Help you draft complete responses to officer clarifications.`,
+        actions: [
+          { label: 'View Investment Proposal', href: `/app/projects/${projectId}` },
+          { label: 'Explore Approval Directory', href: '/app/approval-directory' },
+        ],
+        suggested_follow_ups: [
+          'What should I do next?',
+          'What documents are needed?',
+          'Why is this application blocked?',
+        ],
+      };
+    } else if (q.includes('fee') || q.includes('cost') || q.includes('payment') || q.includes('gras') || q.includes('challan') || q.includes('how much')) {
+      searchMatch = {
+        question_id: 'fees_guidance',
+        question: params.query_text,
+        category: 'Fees & Payments',
+        title: 'Statutory Clearance Fees & GRAS Payment Information',
+        answer: `Statutory clearance fees in Maharashtra are calculated deterministically based on your declared project attributes:\n\n• **MIDC Plot & Water**: Land lease premium + water connection security deposit and pipe-laying estimation charges.\n• **MPCB Consent to Establish (CTE)**: Scaled by Capital Investment tier.\n• **Fire NOC**: Based on covered built-up area and hazard classification.\n• **Factory License (DISH)**: Proportional to maximum worker headcount and installed electrical horsepower.\n\n*Payment is processed through the state treasury Government Receipt Accounting System (GRAS) with instant e-challan generation and payment receipt archival.*`,
+        actions: [
+          { label: 'Explore Approval Directory & Fees', href: '/app/approval-directory' },
+          { label: 'Check Matched Subsidies', href: '/app/incentives' },
+        ],
+        suggested_follow_ups: [
+          'What documents are needed?',
+          'What is the Package Scheme of Incentives (PSI 2019)?',
+          'Which approvals can start now?',
+        ],
+      };
+    } else if (q.includes('track') || q.includes('status') || q.includes('where is') || q.includes('progress')) {
+      searchMatch = {
+        question_id: 'tracking_guidance',
+        question: params.query_text,
+        category: 'Application Tracking',
+        title: 'Tracking Application Status & Progress',
+        answer: `You can track all permissions in real time across 5 clear lifecycle stages:\n\n1. **NOT_STARTED / IN_PREPARATION**: Compiling required documents.\n2. **READY_TO_SUBMIT**: All prerequisite clearances and mandatory documents have passed validation.\n3. **UNDER_SCRUTINY**: Application has been officially received by the competent authority. The statutory RTS SLA clock is running.\n4. **QUERY_RAISED**: The reviewing officer requires clarification. (SLA timer is paused until you reply).\n5. **APPROVED**: Clearance granted! Official digitally-signed certificate is issued with a verification QR code.`,
+        actions: [
+          { label: 'View Application Tracker', href: '/app/approvals' },
+          { label: 'Project Control Centre', href: `/app/projects/${projectId}` },
+        ],
+        suggested_follow_ups: [
+          'Which approvals can start now?',
+          'What is the configured time limit?',
+          'How do I respond to queries?',
+        ],
+      };
+    } else if (q.includes('digilocker') || q.includes('aadhaar')) {
+      searchMatch = {
+        question_id: 'digilocker_guidance',
+        question: params.query_text,
+        category: 'Identity & Authentication',
+        title: 'DigiLocker Verification & Document Authentication',
+        answer: `Udyog Setu integrates with **DigiLocker** to enable instant, paperless verification of statutory records:\n\n• **Instant Fetch**: Fetch verified Company PAN, Incorporation Certificate (MCA), and Land Allotment Letter directly from government issuers.\n• **Zero Manual Attestation**: DigiLocker verified documents carry legal parity with original physical documents under the Information Technology Act 2000.\n• **Tamper-Evident Security**: Cryptographically verified SHA-256 signatures ensure officers approve clearances without requesting physical copies.`,
+        actions: [
+          { label: 'Verify via DigiLocker in Vault', href: '/app/documents' },
+        ],
+        suggested_follow_ups: [
+          'What documents are needed?',
+          'What file formats and size limits are accepted?',
+        ],
+      };
+    } else if (q.includes('format') || q.includes('size limit') || q.includes('upload limit')) {
+      searchMatch = {
+        question_id: 'format_guidance',
+        question: params.query_text,
+        category: 'Document Vault',
+        title: 'Accepted File Formats & Upload Specifications',
+        answer: `When uploading exhibits to your **Document Vault**:\n\n• **Supported Formats**: PDF (recommended for multi-page deeds & certificates), JPG, JPEG, and PNG.\n• **Maximum File Size**: Up to **25 MB** per document exhibit.\n• **Resolution Guidance**: 200 to 300 DPI is optimal for clear OCR and text recognition.\n• **Drawings**: Scaled factory layout drawings should be uploaded in vector PDF or high-resolution format with visible north markers and dimensions.`,
+        actions: [
+          { label: 'Open Document Vault', href: '/app/documents' },
+        ],
+        suggested_follow_ups: [
+          'What documents are needed?',
+          'Which approvals can start now?',
+        ],
+      };
+    } else if (q.includes('certificate') || q.includes('download approval') || q.includes('sanction order')) {
+      searchMatch = {
+        question_id: 'certificate_guidance',
+        question: params.query_text,
+        category: 'Statutory Certificates',
+        title: 'Clearance Certificates & Digital Signatures',
+        answer: `Once an application reaches **APPROVED** status:\n\n• **Digital Signature**: The Competent Authority issues an official digitally signed sanction order conforming to state standards.\n• **Tamper-Proof QR Code**: Each certificate includes a verifiable QR code linking directly to the state Single Window verification portal.\n• **Permanent Vault Storage**: Your approved certificates are automatically archived in your **Document Vault** for instant reuse in downstream clearances or bank loan processing.`,
+        actions: [
+          { label: 'View Approved Permissions', href: '/app/approvals' },
+          { label: 'Open Document Vault', href: '/app/documents' },
+        ],
+        suggested_follow_ups: [
+          'How are compliance obligations calculated?',
+          'What should I do next?',
+        ],
+      };
+    } else if (q.includes('contact') || q.includes('helpline') || q.includes('nodal') || q.includes('assistance') || q.includes('support')) {
+      searchMatch = {
+        question_id: 'nodal_assistance_guidance',
+        question: params.query_text,
+        category: 'Investor Assistance',
+        title: 'MAITRI Investor Assistance & Nodal Facilitation',
+        answer: `If you encounter procedural hurdles, inter-departmental delays, or technical questions:\n\n• **Submit an Assistance Request**: Open the **Investor Assistance** desk to lodge a request under categories like *Approval Guidance*, *Document Help*, or *Processing Escalation*.\n• **Dedicated Nodal Officer**: A designated MAITRI Nodal Facilitation Officer claims your ticket, liaises with the reviewing authority, and provides official coordination notes.\n• **Empowered Committee Escalation**: Applications that breach RTS Act statutory timelines can be escalated directly to the District Collector's Empowered Committee.`,
+        actions: [
+          { label: 'Submit Assistance Request', href: '/app/assistance' },
+          { label: 'View Specified Time Limits', href: '/government/sla-monitor' },
+        ],
+        suggested_follow_ups: [
+          'What is the configured time limit?',
+          'What should I do next?',
+        ],
+      };
+    } else if (q.includes('scheme') || q.includes('incentive') || q.includes('subsidy') || q.includes('benefit')) {
+      searchMatch = {
+        question_id: 'incentives_guidance',
+        question: params.query_text,
+        category: 'Promotional Schemes',
+        title: 'Applicable Government Schemes & Subsidies',
+        answer: `Based on your undertaking's sector (**${project?.sector || 'Industrial'}**) and capital investment tier, you may be eligible for:\n\n• **Maharashtra Package Scheme of Incentives (PSI) 2019**: Up to 30% capital subsidy, electricity duty waiver, and stamp duty exemption.\n• **MSME Technology Upgradation Scheme**: Credit-linked capital subsidy for eligible equipment.\n• **MoFPI / Kisan Sampada Scheme**: Infrastructure grants for agro & food processing units.`,
+        actions: [
+          { label: 'View Matched Incentives', href: '/app/incentives' },
+        ],
+        suggested_follow_ups: [
+          'What documents are needed?',
+          'What should I do next?',
+        ],
+      };
+    } else if (q.includes('inspect') || q.includes('visit') || q.includes('officer')) {
+      searchMatch = {
+        question_id: 'inspection_guidance',
+        question: params.query_text,
+        category: 'Site Inspections',
+        title: 'Joint Site Inspection Procedures',
+        answer: `Under Maharashtra Single Window guidelines, site inspections are conducted jointly across MIDC, MPCB, and DISH to eliminate repetitive site visits.\n\n• You will receive an inspection notice with designated date and officer details.\n• You can verify your site readiness checklist before the scheduled date.\n• Inspection findings and photo exhibits are logged directly into your single-window timeline.`,
+        actions: [
+          { label: 'View Site Inspections', href: '/app/inspections' },
+        ],
+        suggested_follow_ups: [
+          'What documents are needed?',
+          'What should I do next?',
+        ],
+      };
+    } else if (q.includes('block') || q.includes('prereq') || q.includes('wait') || q.includes('depend')) {
+      searchMatch = answers['why_application_blocked'];
+    } else if (q.includes('doc') || q.includes('upload') || q.includes('proof') || q.includes('attach')) {
+      searchMatch = answers['what_documents_needed'];
+    } else if (q.includes('why') || q.includes('reason') || q.includes('basis') || q.includes('mandate')) {
+      searchMatch = answers['why_permission_required'];
+    } else if (q.includes('next') || q.includes('action') || q.includes('todo') || q.includes('now')) {
+      searchMatch = answers['what_should_i_do_next'];
+    } else if (q.includes('start') || q.includes('parallel') || q.includes('eligible')) {
+      searchMatch = answers['which_approvals_can_start_now'];
+    } else if (q.includes('fail') || q.includes('invalid') || q.includes('reject') || q.includes('error')) {
+      searchMatch = answers['which_document_failed_validation'];
+    } else if (q.includes('form') || q.includes('template') || q.includes('download') || q.includes('pdf')) {
+      searchMatch = answers['which_form_should_i_use'];
+    } else if (q.includes('sla') || q.includes('time') || q.includes('limit') || q.includes('deadline') || q.includes('day')) {
+      searchMatch = answers['what_is_configured_time_limit'];
+    } else if (q.includes('query') || q.includes('clarif') || q.includes('respond')) {
+      searchMatch = answers['how_do_i_respond_to_query'];
+    } else {
+      // Default fallback
+      searchMatch = answers['what_should_i_do_next'] || answers['why_permission_required'];
+    }
+  }
+
+  return {
+    context: {
+      page,
+      project_id: projectId,
+      project_name: projectName,
+      application_id: application?.id || null,
+      application_number: appNumber,
+      approval_name: approvalName,
+      authority,
+      status: appStatus,
+    },
+    suggested_questions: suggestedQuestions,
+    answers,
+    search_match: searchMatch,
+  };
+}
